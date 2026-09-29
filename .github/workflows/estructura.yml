@@ -1,0 +1,74 @@
+# Estructura del arnés — la FORMA de lo que el plugin instala.
+#
+# Qué comprueba: que cada skill cargue (name = carpeta, description que cabe en el listado), que lo
+# que nombra exista, que los manifiestos se nombren entre sí, y que el medidor de los cuatro
+# criterios del #141 dé cero — con su autoprueba antes, porque un medidor que no se vio fallar no
+# mide nada.
+#
+# Qué NO comprueba: que lo que una skill afirma siga siendo cierto en los otros dos repos más allá
+# de que las herramientas que nombra existan. Eso es el gate del arnés (CHERCED-DEV/Synergos.CMS#142).
+# Se dice acá porque el peor efecto de un CI parcial es que alguien deje de mirar confiando en él.
+#
+# Por qué clona Synergos.CMS y Synergos.UI: el criterio (b) comprueba cada `npm run`, `node x.mjs`
+# y `dotnet … x.csproj` contra el DISCO de esos dos árboles. Sin ellos el medidor sale con 2 en vez
+# de dar un verde que no midió.
+#
+# Por qué sin filtro `paths:` y con un cron: lo que el medidor lee también lo cambian los otros dos
+# repos (una herramienta que se renombra en el CMS vuelve muerta a una skill sin tocar este repo), y
+# un filtro que intentara enumerarlo se equivocaría en silencio (#128, #142).
+#
+# Por qué también Windows: el #170 midió que Windows se comporta distinto (CRLF, rutas). El
+# .gitattributes fuerza LF y el medidor normaliza, pero eso se comprueba corriendo, no leyendo.
+
+name: Estructura del arnés
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  estructura:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clonar Synergos.CMS (el disco contra el que se miden las herramientas)
+        uses: actions/checkout@v4
+        with:
+          repository: CHERCED-DEV/Synergos.CMS
+          path: _hermanos/Synergos.CMS
+
+      - name: Clonar Synergos.UI
+        uses: actions/checkout@v4
+        with:
+          repository: CHERCED-DEV/Synergos.UI
+          path: _hermanos/Synergos.UI
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Autoprueba del medidor
+        run: node tools/criterios.mjs --autoprueba
+
+      - name: El medidor sobre skills/, con la lista nombrada
+        run: node tools/criterios.mjs
+        env:
+          SYNERGOS_CMS_PATH: ${{ github.workspace }}/_hermanos/Synergos.CMS
+          SYNERGOS_UI_PATH: ${{ github.workspace }}/_hermanos/Synergos.UI
+
+      - name: Tests de estructura
+        run: node --test tests/estructura.test.mjs
+        env:
+          SYNERGOS_CMS_PATH: ${{ github.workspace }}/_hermanos/Synergos.CMS
+          SYNERGOS_UI_PATH: ${{ github.workspace }}/_hermanos/Synergos.UI

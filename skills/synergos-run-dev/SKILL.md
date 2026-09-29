@@ -1,299 +1,235 @@
 ---
 name: synergos-run-dev
-description: Arranca el entorno de desarrollo completo de Synergos — CMS Umbraco (http://synergos.local:5000), CDN local (FileSystem mode), y opcionalmente el dev server Angular para un elemento específico. Verifica prerequisitos (hosts, cert, LOCAL_CDN), detecta si ya está corriendo, y hace health check completo al terminar. Usar antes de invocar synergos-cms-author o synergos-cdn-build.
+description: Arranca el entorno de desarrollo completo de Synergos — CMS Umbraco (la URL del Kestrel de Development), el CDN que construye Synergos.UI (FileSystem desde public/, o HTTP con dev:cdn) y opcionalmente el ciclo editor→navegador de un elemento. Verifica prerequisitos (hosts, cert, CDN construido), detecta si ya está corriendo, y comprueba al terminar con /_health y las herramientas de humo del CMS. Usar antes de invocar synergos-content-fill o synergos-cdn-build.
 model: claude-opus-4-8
 ---
 
 # SYNERGOS Run Dev — arrancar el stack completo de desarrollo
 
-Esta skill levanta y verifica el entorno completo de desarrollo de Synergos en orden. Sin este entorno corriendo, `synergos-cms-author` no puede crear contenido y `synergos-cdn-build` no puede verificar que los bundles se sirven.
+Esta skill levanta y verifica el entorno de desarrollo de Synergos en orden. La guía canónica, medida
+de punta a punta, es `Synergos.CMS.Web/docs/onboarding/arrancar-los-dos-arboles.md` del CMS: esta
+skill es su versión ejecutable, y cuando las dos difieran **manda la guía**.
+
+Todas las rutas y la URL salen de las variables de `synergos-guardrails/references/entorno.md`
+(`$cms`, `$ui`, `$cdnRoot`, `$base`). Resolvelas primero; nada de esta skill supone una máquina.
 
 ## Stack completo
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  http://synergos.local:5000   → Umbraco CMS (dotnet)    │
-│  https://synergos.local:5001  → Umbraco CMS (HTTPS)     │
-│  /cdn-bundles/*               → CDN local (FileSystem)   │
-│  http://localhost:43XX        → Angular dev server       │
-└─────────────────────────────────────────────────────────┘
+$base (Kestrel Http de appsettings.Development.json)   → Umbraco CMS (dotnet)
+el endpoint Https del mismo fichero                     → Umbraco CMS (HTTPS, con el cert de dev)
+$base/cdn-bundles/*                                     → el CDN, leído del disco (FileSystem)
+http://127.0.0.1:4321                                   → npm run dev:cdn (opcional, el ciclo editor→navegador)
 ```
 
-El CDN local es servido por el propio Umbraco desde `C:\LOCAL_CDN\` bajo la ruta `/cdn-bundles/` — no necesita proceso separado. Solo necesita que `BundleRegistry:Mode=FileSystem` y que `C:\LOCAL_CDN\` exista.
+En `Development` el CMS lee el CDN del disco: `Synergos:BundleRegistry:LocalPath` apunta, relativo a
+la raíz de contenido, al `public/` del clon hermano de la UI, y lo sirve bajo `PublicBaseUrl`
+(`/cdn-bundles`). No hace falta un proceso aparte — pero sí que el hermano esté **construido**.
 
 ---
 
 ## 1. Verificar prerequisitos
 
-Ejecutar en PowerShell antes de intentar arrancar:
-
 ```powershell
+# $cms, $ui, $cdnRoot, $base: synergos-guardrails/references/entorno.md
 $ok = $true
 
-# 1A. Entrada en hosts
-$hostsPath = "C:\Windows\System32\drivers\etc\hosts"
-$hostsContent = Get-Content $hostsPath -Raw
-if ($hostsContent -notmatch "synergos\.local") {
-    Write-Warning "PREREQUISITO FALTANTE: synergos.local no está en el hosts file."
-    Write-Warning "Agregar como administrador: Add-Content '$hostsPath' '127.0.0.1 synergos.local'"
+# 1A. El host de desarrollo resuelve (lo nombra el Kestrel de Development)
+$hostDeDev = ([Uri]$base).Host
+$hostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
+if ($hostDeDev -ne 'localhost' -and -not ((Get-Content $hostsPath -Raw) -match [regex]::Escape($hostDeDev))) {
+    Write-Warning "PREREQUISITO: $hostDeDev no está en el fichero hosts. 'node tools/cert-dev.mjs' imprime el comando."
     $ok = $false
-} else {
-    Write-Output "hosts OK — synergos.local encontrado"
 }
 
-# 1B. Certificado de desarrollo
-$certPath = "C:\LOCAL_CDN\synergos-dev.crt"
-$keyPath  = "C:\LOCAL_CDN\synergos-dev.key"
-if (-not (Test-Path $certPath) -or -not (Test-Path $keyPath)) {
-    Write-Warning "PREREQUISITO FALTANTE: cert dev no encontrado en C:\LOCAL_CDN\"
-    Write-Warning "Generar con: dotnet dev-certs https -ep C:\LOCAL_CDN\synergos-dev.pfx -p devpwd"
-    Write-Warning "Luego exportar .crt y .key desde el .pfx"
-    Write-Warning "Alternativa: usar solo HTTP (puerto 5000) — ajustar Kestrel en appsettings.Development.json"
-    # No es bloqueante si solo se usa HTTP
-} else {
-    Write-Output "Cert dev OK — $certPath"
+# 1B. El certificado de desarrollo — se CREA, no se descarga (#137)
+$crt = Join-Path $cms 'certs\synergos-dev.crt'
+if (-not (Test-Path $crt)) {
+    Write-Warning "PREREQUISITO: falta el cert de dev. Desde $cms`: node tools/cert-dev.mjs (y confiarlo; el script dice cómo)."
+    Write-Warning "O levantar sólo por HTTP quitando Kestrel:Endpoints:Https de appsettings.Development.json."
 }
 
-# 1C. Directorio LOCAL_CDN
-if (-not (Test-Path "C:\LOCAL_CDN")) {
-    Write-Warning "PREREQUISITO FALTANTE: C:\LOCAL_CDN no existe."
-    New-Item -ItemType Directory "C:\LOCAL_CDN" | Out-Null
-    Write-Output "C:\LOCAL_CDN creado."
+# 1C. El CDN está CONSTRUIDO. No se crea un registry vacío: con uno vacío el CMS arranca, sirve
+#     la portada en 200 con todo el SSR y no hidrata nada — el defecto #126 fabricado a mano.
+if (-not (Test-Path (Join-Path $cdnRoot 'registry.json'))) {
+    Write-Warning "PREREQUISITO: no hay registry en $cdnRoot. Desde $ui`: npm run setup; npm run build:cdn"
+    Write-Warning "Sin CDN, el CMS en Mode=FileSystem NO arranca (y lo dice). Para levantarlo igual sin hidratar:"
+    Write-Warning "  `$env:Synergos__BundleRegistry__Mode = 'Stub'"
+    $ok = $false
 }
 
-# 1D. registry.json mínimo
-$regPath = "C:\LOCAL_CDN\synergos\registry.json"
-if (-not (Test-Path $regPath)) {
-    Write-Warning "registry.json no encontrado — creando uno vacío mínimo."
-    New-Item -ItemType Directory -Force "C:\LOCAL_CDN\synergos" | Out-Null
-    '{"generated":"2026-01-01T00:00:00Z","version":"0.1.0","baseUrl":"/synergos","elements":[]}' |
-        Set-Content $regPath -Encoding UTF8
-    Write-Output "registry.json vacío creado: $regPath"
-} else {
-    Write-Output "registry.json OK — $regPath"
+# 1D. La contraseña del admin viene del entorno (#150); no está en el árbol
+if (-not $env:Umbraco__CMS__Unattended__UnattendedUserPassword -and
+    -not (Test-Path (Join-Path $cms 'Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db'))) {
+    Write-Warning "PRIMER ARRANQUE: definí Umbraco__CMS__Unattended__UnattendedUserPassword (o dotnet user-secrets)."
+    $ok = $false
 }
 
-# 1E. appsettings.Development.json — verificar BundleRegistry:Mode
-$settingsPath = "Synergos.CMS\Synergos.CMS.Web\appsettings.Development.json"
-if (Test-Path $settingsPath) {
-    $settings = Get-Content $settingsPath -Raw | ConvertFrom-Json
-    $mode = $settings.Synergos.BundleRegistry.Mode
-    if ($mode -ne "FileSystem") {
-        Write-Warning "BundleRegistry:Mode es '$mode' — debería ser 'FileSystem' para dev local."
-    } else {
-        Write-Output "BundleRegistry:Mode OK — FileSystem"
-    }
-}
-
-if ($ok) { Write-Output "Todos los prerequisitos satisfechos." }
+if ($ok) { Write-Output 'Prerequisitos OK.' }
 ```
 
 ---
 
 ## 2. Detectar si el CMS ya está corriendo
 
-```powershell
-function Test-CmsRunning {
-    try {
-        $r = Invoke-WebRequest "http://synergos.local:5000/umbraco/api/keepalive/ping" `
-            -UseBasicParsing -TimeoutSec 3
-        return $r.StatusCode -eq 200
-    } catch { return $false }
-}
+`/_health` es el endpoint propio del CMS (`HealthController`). **200 y 503 significan los dos que el
+proceso está arriba**: 503 es «arriba, con alguna probe en rojo» — el cuerpo dice cuál.
 
-if (Test-CmsRunning) {
-    Write-Output "CMS ya está corriendo en http://synergos.local:5000 — no se necesita arrancar."
-} else {
-    Write-Output "CMS no está corriendo — iniciando..."
-    # Continuar con §3
+```powershell
+function Test-CmsArriba {
+    try { Invoke-WebRequest "$base/_health" -UseBasicParsing -TimeoutSec 3 | Out-Null; return $true }
+    catch { return [bool]$_.Exception.Response }   # un 503 también es un proceso que contesta
 }
+if (Test-CmsArriba) { Write-Output "El CMS ya contesta en $base — no hace falta arrancarlo." }
 ```
 
 ---
 
 ## 3. Arrancar el CMS
 
-### Opción A — Bash tool con run_in_background (recomendado desde Claude)
-
-Usar el Bash tool con `run_in_background: true`:
+### Opción A — Bash tool con `run_in_background` (recomendado desde Claude)
 
 ```bash
-cd /c/Users/HITMA/Desktop/synergos/Synergos.CMS/Synergos.CMS.Web
-dotnet run --launch-profile "SynergosLocal"
+cd "$cms"    # synergos-guardrails/references/entorno.md
+dotnet run --project Synergos.CMS.Web --launch-profile SynergosLocal
 ```
 
-⚠️ El perfil se llama `SynergosLocal` (ver `Properties/launchSettings.json`), NO
-"Development". Un nombre de perfil inexistente **no falla ahí**: `dotnet run` sigue,
-no setea `ASPNETCORE_ENVIRONMENT`, arranca como **Production** y revienta con
-`InvalidOperationException: The factory has not been configured with a proper
-connection string` — que parece un problema de DB y es del perfil (el connection
-string vive en `appsettings.Development.json`).
+⚠️ El perfil se llama `SynergosLocal` (ver `Synergos.CMS.Web/Properties/launchSettings.json`), NO
+"Development". Un nombre de perfil inexistente **no falla ahí**: `dotnet run` sigue, no setea
+`ASPNETCORE_ENVIRONMENT`, arranca como **Production** y revienta con `InvalidOperationException: The
+factory has not been configured with a proper connection string` — que parece un problema de DB y es
+del perfil (el connection string vive en `appsettings.Development.json`).
 
-Después esperar a que responda (poll):
+Después esperar a que conteste:
 
 ```powershell
-$maxWait = 60  # segundos
-$elapsed = 0
-Write-Output "Esperando que el CMS arranque..."
-while ($elapsed -lt $maxWait) {
-    if (Test-CmsRunning) {
-        Write-Output "CMS listo en $elapsed segundos."
-        break
-    }
-    Start-Sleep -Seconds 3
-    $elapsed += 3
-}
-if (-not (Test-CmsRunning)) {
-    Write-Error "CMS no respondió en $maxWait s. Revisar logs del proceso."
-}
+$maxWait = 90; $elapsed = 0
+while ($elapsed -lt $maxWait -and -not (Test-CmsArriba)) { Start-Sleep -Seconds 3; $elapsed += 3 }
+if (Test-CmsArriba) { Write-Output "CMS arriba en $elapsed s." }
+else { Write-Error "El CMS no contestó en $maxWait s. Revisar el log del proceso (§4)." }
 ```
 
 ### Opción B — PowerShell background job
 
 ```powershell
-$cmsDir = "C:\Users\HITMA\Desktop\synergos\Synergos.CMS\Synergos.CMS.Web"
-$cmsJob = Start-Job -Name "SynCMS" -ScriptBlock {
-    Set-Location $using:cmsDir
-    dotnet run
+$cmsJob = Start-Job -Name 'SynCMS' -ScriptBlock {
+    Set-Location $using:cms
+    dotnet run --project Synergos.CMS.Web --launch-profile SynergosLocal
 }
 Write-Output "CMS iniciado como job — ID: $($cmsJob.Id)"
 ```
 
 ### Opción C — Instrucción al arquitecto
 
-Si el agente no puede arrancar procesos background, decirle al arquitecto:
+Si el agente no puede arrancar procesos en segundo plano:
 
 ```
-Abrir una PowerShell como administrador y ejecutar:
+En una terminal, desde el clon de Synergos.CMS:
 
-cd C:\Users\HITMA\Desktop\synergos\Synergos.CMS\Synergos.CMS.Web
-dotnet run
+  dotnet run --project Synergos.CMS.Web --launch-profile SynergosLocal
 
-Dejar esa terminal abierta. El CMS estará disponible en:
-  http://synergos.local:5000
-  https://synergos.local:5001 (si el cert está instalado)
+Dejarla abierta. El CMS queda en la URL del endpoint Http de Kestrel de
+appsettings.Development.json (y en la Https, si el cert está confiado).
 
-Umbraco backoffice: http://synergos.local:5000/umbraco/
-  Usuario: admin@synergos.local
-  Password: REDACTADO-150
+Backoffice: <esa URL>/umbraco/
+  Usuario: el UnattendedUserEmail de appsettings.Development.json
+  Contraseña: la que pusiste en Umbraco__CMS__Unattended__UnattendedUserPassword (#150)
 ```
 
 ---
 
 ## 4. Logs de arranque — señales esperadas y errores
 
-### Logs normales (ignorar):
+### Logs normales (ignorar)
 ```
 warn: Umbraco.Cms.Core.Services.LocalizedTextService[0]
     Could not find localization file
-info: UmbracoApplicationStarting in 2.4s
 info: BundleRegistry warmup OK: adapter=FileSystemBundleRegistryClient
-info: Now listening on: http://synergos.local:5000
+info: Now listening on: <la URL de $base>
 ```
 
-### Señales de éxito:
-- `Now listening on: http://synergos.local:5000` → CMS arrancó
-- `BundleRegistry warmup OK: adapter=FileSystemBundleRegistryClient` → CDN local conectado
-- `uSync: v14.x.x — imported X items` → schema importado correctamente
+### Señales de éxito
+- `Now listening on: …` → el CMS arrancó
+- `BundleRegistry warmup OK: adapter=FileSystemBundleRegistryClient` → el CDN del disco conectado
+- `uSync: Startup Complete` → terminó el import (si lo pediste). **Esperá esta línea antes de sembrar
+  nada**: sembrar a mitad deja toda página de contenido en 500 (lo midió la guía de arranque).
 
-### Señales de problema:
+### Señales de problema
+
 | Log | Causa | Solución |
 |-----|-------|----------|
-| `UNIQUE constraint failed` | GUID duplicado en uSync | Verificar quad-check antes del último import |
-| `Address already in use :5000` | Otro proceso usa el puerto | `netstat -ano | findstr :5000` y matar el proceso |
-| `Failed to bind to address https://synergos.local:5001` | Cert no encontrado | Usar solo HTTP o corregir rutas cert en appsettings.Development.json |
-| `BundleRegistry warmup FAILED` | `C:\LOCAL_CDN` no existe o registry.json corrupto | Verificar §1C y §1D |
-| `ModelsBuilder: FlagOutOfDateModels` | Schema cambió sin regenerar models | Normal si solo se leen props untyped — "Running without models" no rompe nada |
-| `Database does not exist` | Primer arranque sin SQLite | Esperar — Umbraco instala de forma unattended automáticamente |
+| El CMS no arranca y habla de `LocalPath` | `Mode=FileSystem` y el hermano no está construido ahí | `npm run build:cdn` en la UI, o `Synergos__BundleRegistry__Mode=Stub` |
+| `UNIQUE constraint failed` | GUID duplicado en uSync | Quad-check de GUIDs antes del import (`synergos-usync-author`) |
+| `Address already in use` | Otro proceso usa el puerto de `$base` | `Get-NetTCPConnection -LocalPort ([Uri]$base).Port` y matar ese proceso |
+| `Failed to bind to address https://…` | Falta el cert de dev | `node tools/cert-dev.mjs`, o levantar sólo por HTTP |
+| `ModelsBuilder: FlagOutOfDateModels` | Schema cambió sin regenerar models | Normal con props untyped — "Running without models" no rompe nada |
+| `Database does not exist` | Primer arranque sin SQLite | Esperar — Umbraco instala unattended (necesita la contraseña del §1D) |
 
 ---
 
-## 5. Arrancar Angular Dev Server (opcional)
+## 5. El ciclo editor→navegador de un elemento (opcional)
 
-Solo si se está desarrollando un elemento Angular específico:
+Sólo si se está desarrollando un elemento. El dev server de un proyecto por elemento ya no existe:
+la UI se compila de una vez (`platforms/angular/tools/build.mjs`). Lo que sirve es el watch del CDN:
 
-```powershell
-# Desde el workspace NX
-$nxRoot = "C:\Users\HITMA\Desktop\synergos\Synergos.UI\platforms\angular"
-
-# Verificar que el elemento existe
-$elementName = "{name}"  # ej: accordion, hero, pricing-card
-$projectName = "elements-{tier}-$elementName"  # ej: elements-compositions-accordion
-
-# Arrancar dev server (el puerto 43XX está definido en project.json)
-Start-Process powershell -ArgumentList "-NoExit", "-Command",
-    "cd '$nxRoot'; npx nx serve $projectName"
-
-Write-Output "Angular dev server iniciando para $projectName"
-Write-Output "Abrir http://localhost:43XX para ver el componente aislado"
+```bash
+cd "$ui"
+npm run dev:cdn                     # o: npm run dev:cdn -- --solo=<elemento>
 ```
 
-**Nota:** El Angular dev server es opcional y solo útil para desarrollar el componente visualmente en aislamiento. El CMS sirve los bundles compilados desde `C:\LOCAL_CDN\` — el dev server NO es la fuente de los bundles para Umbraco.
+Sirve el layout COMPLETO del CDN en `http://127.0.0.1:4321` desde el watch. `/probar/<elemento>` monta
+ese elemento suelto con su import map y valores de muestra — **no es una vista previa del producto**.
+Para que el CMS lo consuma, arrancalo con las claves de configuración de .NET (**no** las de compose):
+
+```powershell
+$env:Synergos__BundleRegistry__Mode = 'Http'
+$env:Synergos__BundleRegistry__PublicBaseUrl = 'http://127.0.0.1:4321'
+```
+
+`SYNERGOS_CDN_MODE` / `SYNERGOS_CDN_URL` sólo existen dentro de `compose.yml`: fuera de compose no las
+lee nadie, y la portada sale en 200 sin import map (medido en la guía de arranque).
 
 ---
 
-## 6. Health check completo
+## 6. Comprobar que el entorno quedó arriba
 
-Ejecutar después de que el CMS esté corriendo:
+### 6A. `/_health` — lo que el CMS dice de sí mismo
 
 ```powershell
-$baseUrl = "http://synergos.local:5000"
-$report  = [ordered]@{}
-
-# 6A. Ping CMS
-try {
-    Invoke-WebRequest "$baseUrl/umbraco/api/keepalive/ping" -UseBasicParsing -TimeoutSec 5 | Out-Null
-    $report["CMS Ping"]        = "OK"
-} catch { $report["CMS Ping"] = "FAIL — CMS no responde" }
-
-# 6B. Management API token
-try {
-    $auth = Invoke-RestMethod "$baseUrl/umbraco/management/api/v1/security/back-office/token" `
-        -Method POST -ContentType "application/x-www-form-urlencoded" `
-        -Body "grant_type=password&client_id=umbraco-back-office&username=admin%40synergos.local&password=REDACTADO-150"
-    $report["Management API"] = if ($auth.access_token) { "OK — token obtenido" } else { "FAIL — no token" }
-    $token = $auth.access_token
-} catch { $report["Management API"] = "FAIL — $($_.Exception.Message)" }
-
-# 6C. Bundle registry
-try {
-    $reg  = Get-Content "C:\LOCAL_CDN\synergos\registry.json" -Raw | ConvertFrom-Json
-    $count = @($reg.elements).Count
-    $report["Bundle Registry"] = "OK — $count elementos en registry.json"
-} catch { $report["Bundle Registry"] = "FAIL — registry.json ilegible" }
-
-# 6D. CDN static files
-try {
-    if ($count -gt 0) {
-        $first = $reg.elements[0]
-        $name  = $first.name
-        $ver   = $first.implementations.angular.latest
-        $url   = "$baseUrl/cdn-bundles/synergos/$name/angular/$ver/main.js"
-        $r     = Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 5
-        $report["CDN Static Files"] = "OK — $url ($($r.StatusCode))"
-    } else {
-        $report["CDN Static Files"] = "SKIP — registry vacío"
-    }
-} catch { $report["CDN Static Files"] = "FAIL — bundles no accesibles" }
-
-# 6E. Swagger disponible
-try {
-    Invoke-WebRequest "$baseUrl/umbraco/swagger" -UseBasicParsing -TimeoutSec 5 | Out-Null
-    $report["Swagger UI"] = "OK — $baseUrl/umbraco/swagger"
-} catch { $report["Swagger UI"] = "WARN — no accesible (no crítico)" }
-
-# Imprimir reporte
-Write-Output ""
-Write-Output "══════════════════════════════════════"
-Write-Output "  SYNERGOS DEV — Health Check"
-Write-Output "══════════════════════════════════════"
-$report.GetEnumerator() | ForEach-Object { Write-Output "  $($_.Key): $($_.Value)" }
-Write-Output "══════════════════════════════════════"
-Write-Output "  Backoffice: $baseUrl/umbraco/"
-Write-Output "  usuario: admin@synergos.local"
-Write-Output "  password: REDACTADO-150"
-Write-Output "══════════════════════════════════════"
+try { $r = Invoke-WebRequest "$base/_health" -UseBasicParsing -TimeoutSec 5 }
+catch { $r = $_.Exception.Response }
+$cuerpo = if ($r -is [System.Net.HttpWebResponse]) {
+    (New-Object IO.StreamReader($r.GetResponseStream())).ReadToEnd() } else { $r.Content }
+$salud = $cuerpo | ConvertFrom-Json
+Write-Output "Estado: $($salud.status) · versión: $($salud.version)"
+$salud.checks | ForEach-Object {
+    Write-Output ("  {0} {1}: {2}" -f $(if ($_.healthy) { '✓' } else { '✗' }), $_.name, $_.message)
+}
 ```
+
+Cada probe registrada aparece por nombre (incluida la del bundle registry). 503 = alguna en rojo.
+
+### 6B. El CDN del disco
+
+```powershell
+$reg = Get-Content (Join-Path $cdnRoot 'registry.json') -Raw | ConvertFrom-Json
+Write-Output "registry: $(@($reg.elements).Count) elementos — generado $($reg.generated)"
+```
+
+### 6C. La prueba que importa: que la página hidrate
+
+Un proceso arriba no es un sitio que funciona: una portada en 200 sin import map **se ve bien y no
+hace nada** (#126). Las herramientas del CMS lo comprueban levantando **su propio** CMS sobre una base
+temporal — no necesitan el de §3 y no lo tocan:
+
+```bash
+cd "$cms"
+node tools/humo-portada.mjs      # base vacía + XML + siembra = portada SERVIDA
+node tools/humo-conectado.mjs    # …y además CONECTADA al CDN: import map, un <script> por tag, bundles 200
+```
+
+Y en el navegador, sobre el CMS de §3: `customElements.get('synergos-<elemento>')` tiene que ser una
+función → `synergos-app-verify`.
 
 ---
 
@@ -301,14 +237,15 @@ Write-Output "══════════════════════
 
 ```powershell
 # Si se usó Start-Job:
-Get-Job -Name "SynCMS" | Stop-Job | Remove-Job
+Get-Job -Name 'SynCMS' -ErrorAction SilentlyContinue | Stop-Job -PassThru | Remove-Job
 
 # Si se inició desde terminal: Ctrl+C en esa terminal.
 
-# Verificar que el puerto quedó libre:
-$procs = Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue
+# Verificar que el puerto de $base quedó libre:
+$puerto = ([Uri]$base).Port
+$procs = Get-NetTCPConnection -LocalPort $puerto -State Listen -ErrorAction SilentlyContinue
 if ($procs) {
-    Write-Warning "Puerto 5000 todavía en uso por PID $($procs.OwningProcess)"
+    Write-Warning "Puerto $puerto todavía en uso por PID $($procs.OwningProcess)"
     Stop-Process -Id $procs.OwningProcess -Force
 }
 ```
@@ -319,10 +256,13 @@ if ($procs) {
 
 Si es la primera vez en esta máquina:
 
-1. Umbraco detecta que no hay DB y crea `Umbraco.sqlite.db` automáticamente.
-2. Crea el usuario admin con las credenciales de `appsettings.Development.json:Unattended`.
-3. Puede tardar 30-60 segundos más de lo normal.
-4. Una vez arrancado, correr uSync Import para aplicar el schema (ver `synergos-usync-import`).
+1. Umbraco detecta que no hay DB y crea `Synergos.CMS.Web/umbraco/Data/Umbraco.sqlite.db`.
+2. Crea el admin con el nombre y el correo de `appsettings.Development.json:Unattended` y la
+   contraseña de `Umbraco__CMS__Unattended__UnattendedUserPassword`. Sin ella el arranque falla con
+   un mensaje que la nombra (#150) — a propósito: un admin sin contraseña es un sitio al que nadie
+   puede entrar.
+3. El schema **no** se importa solo (ADR 0008): uSync Import a mano, una vez → `synergos-usync-import`.
+4. La portada la crea `POST $base/dev/seed-portada` (detrás del flag DevSeed), después del import.
 
 **Señal de instalación completa:** `Application started. Press Ctrl+C to shut down.` en los logs.
 
@@ -332,8 +272,8 @@ Si es la primera vez en esta máquina:
 
 | URL | Propósito |
 |-----|-----------|
-| `http://synergos.local:5000/umbraco/` | Backoffice |
-| `http://synergos.local:5000/umbraco/swagger` | Management API docs |
-| `http://synergos.local:5000/umbraco/api/keepalive/ping` | Health ping |
-| `http://synergos.local:5000/cdn-bundles/synergos/` | CDN bundles estáticos |
-| `http://synergos.local:5000/` | Sitio público |
+| `$base/umbraco/` | Backoffice |
+| `$base/_health` | Salud del CMS: probes con nombre, 200/503 |
+| `$base/cdn-bundles/synergos/` | Bundles del CDN servidos por el CMS (FileSystem) |
+| `$base/` | Sitio público |
+| `http://127.0.0.1:4321/probar` | El banco de elementos de `npm run dev:cdn` |

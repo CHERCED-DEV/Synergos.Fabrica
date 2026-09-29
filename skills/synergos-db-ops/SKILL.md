@@ -14,14 +14,19 @@ La base de datos SQLite de Umbraco NO se toca mientras el CMS está corriendo, s
 
 ## 0. Rutas canónicas
 
+Relativas al clon del CMS (`$cms`), y los respaldos fuera de él (`$backups`): las dos salen de
+`synergos-guardrails/references/entorno.md`.
+
 ```
-DB principal   : Synergos.CMS\Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db
-WAL file       : Synergos.CMS\Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db-wal
-SHM file       : Synergos.CMS\Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db-shm
-Backups        : C:\Users\HITMA\Desktop\synergos-backups\
+DB principal   : $cms/Synergos.CMS.Web/umbraco/Data/Umbraco.sqlite.db
+WAL file       : $cms/Synergos.CMS.Web/umbraco/Data/Umbraco.sqlite.db-wal
+SHM file       : $cms/Synergos.CMS.Web/umbraco/Data/Umbraco.sqlite.db-shm
+Backups        : $SYNERGOS_BACKUP_DIR
 ```
 
-La DB NO se commitea al repo. Los backups van siempre en `synergos-backups\` — nunca dentro del árbol del repo.
+La DB NO se commitea al repo. Los backups van siempre en `$SYNERGOS_BACKUP_DIR` — nunca dentro del árbol
+del repo. Y la DB es **derivable**: base vacía + XML del repo = entorno completo (ADR 0128,
+`node tools/usync-rebuild-check.mjs`), así que el schema nunca se «rescata» de un backup.
 
 ---
 
@@ -29,25 +34,31 @@ La DB NO se commitea al repo. Los backups van siempre en `synergos-backups\` —
 
 | Tipo | Riesgo | Requisito |
 |------|--------|-----------|
-| **Lectura vía Management API** | Ninguno | CMS corriendo |
+| **Lectura del XML de uSync** (`uSync/v9/`) + `node tools/usync-audit.mjs` | Ninguno | Nada: es el disco |
 | **Lectura SQL diagnóstico** | Bajo | CMS puede estar corriendo — usar WAL reader |
 | **Lectura SQL directa** | Medio | Preferir CMS detenido; usar con cuidado |
 | **Escritura SQL** | ALTO | **CMS detenido + backup obligatorio** |
 | **Restore desde backup** | MUY ALTO | **CMS detenido + verificación post-restore** |
 
-**Primera opción siempre:** usar la Management API (`/umbraco/management/api/v1/`) para leer datos. Solo bajar a SQL directo cuando la API no expone lo que se necesita.
+**Primera opción siempre:** el XML de uSync, que es la fuente del schema (ADR 0008) —
+`Synergos.CMS.Web/uSync/v9/`, con `node tools/usync-audit.mjs` para cruzarlo— y, para contenido
+exportado, `uSync/v9/Content/` (ADR 0129). Solo bajar a SQL para lo que únicamente está en la DB
+(valores de propiedad sin exportar, members, logs). Umbraco 13 no tiene una API de lectura del
+backoffice que sirva de atajo (ADR 0093).
 
 ---
 
 ## 2. Verificar estado del CMS
 
 ```powershell
+# $cms, $base, $backups: synergos-guardrails/references/entorno.md
 function Get-CmsState {
     try {
-        $r = Invoke-WebRequest "http://synergos.local:5000/umbraco/api/keepalive/ping" `
-            -UseBasicParsing -TimeoutSec 3
+        $r = Invoke-WebRequest "$base/_health" -UseBasicParsing -TimeoutSec 3
         return @{ Running = $true; StatusCode = $r.StatusCode }
     } catch {
+        # un 503 de /_health también es un CMS corriendo (con alguna probe en rojo)
+        if ($_.Exception.Response) { return @{ Running = $true; StatusCode = [int]$_.Exception.Response.StatusCode } }
         return @{ Running = $false; Error = $_.Exception.Message }
     }
 }
@@ -70,13 +81,14 @@ Antes de cualquier escritura SQL o restore:
 function Stop-CmsSafe {
     param([int]$TimeoutSeconds = 30)
 
-    $port5000 = Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue
-    if (-not $port5000) {
+    $puerto = ([Uri]$base).Port
+    $escucha = Get-NetTCPConnection -LocalPort $puerto -State Listen -ErrorAction SilentlyContinue
+    if (-not $escucha) {
         Write-Output "CMS ya estaba detenido."
         return
     }
 
-    $pid5000 = $port5000.OwningProcess | Select-Object -First 1
+    $pid5000 = $escucha.OwningProcess | Select-Object -First 1
     Write-Output "Deteniendo CMS (PID $pid5000)..."
 
     # Señal de cierre graceful primero
@@ -85,7 +97,7 @@ function Stop-CmsSafe {
     # Esperar hasta $TimeoutSeconds
     $elapsed = 0
     while ($elapsed -lt $TimeoutSeconds) {
-        $still = Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue
+        $still = Get-NetTCPConnection -LocalPort $puerto -State Listen -ErrorAction SilentlyContinue
         if (-not $still) {
             Write-Output "CMS detenido correctamente en $elapsed s."
             return
@@ -99,7 +111,7 @@ function Stop-CmsSafe {
     Stop-Process -Id $pid5000 -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
 
-    $final = Get-NetTCPConnection -LocalPort 5000 -State Listen -ErrorAction SilentlyContinue
+    $final = Get-NetTCPConnection -LocalPort $puerto -State Listen -ErrorAction SilentlyContinue
     if ($final) {
         Write-Error "No se pudo detener el CMS. Abortar operación."
         exit 1
@@ -123,7 +135,7 @@ function Invoke-SqliteCheckpoint {
     if (-not $sqlite3) {
         # Intentar ubicación de Chocolatey o winget
         $candidates = @(
-            "C:\ProgramData\chocolatey\bin\sqlite3.exe",
+            "$env:ProgramData\chocolatey\bin\sqlite3.exe",
             "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\SQLite.SQLite_Microsoft.Winget.Source_8wekyb3d8bbwe\sqlite3.exe"
         )
         $sqlite3 = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
@@ -150,12 +162,13 @@ function Invoke-SqliteCheckpoint {
 function Backup-SynergosSqlite {
     param([string]$Reason = "pre-operation")
 
-    $dbPath    = "Synergos.CMS\Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
-    $backupDir = "C:\Users\HITMA\Desktop\synergos-backups"
+    $dbPath    = Join-Path $cms "Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
+    $backupDir = $backups
     $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $slug      = $Reason -replace '[^a-zA-Z0-9]', '-'
-    $backupPath = "$backupDir\Umbraco-$slug-$timestamp.sqlite.db"
+    $backupPath = Join-Path $backupDir "Umbraco-$slug-$timestamp.sqlite.db"
 
+    if (-not $backupDir) { Write-Error "Definí SYNERGOS_BACKUP_DIR (fuera del repo)."; return $null }
     if (-not (Test-Path $backupDir)) { New-Item -ItemType Directory $backupDir | Out-Null }
     if (-not (Test-Path $dbPath))    { Write-Warning "DB no existe: $dbPath"; return $null }
 
@@ -184,7 +197,7 @@ function Backup-SynergosSqlite {
 ### Opción A — sqlite3 CLI (recomendado si disponible)
 
 ```powershell
-$dbPath = "Synergos.CMS\Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
+$dbPath = Join-Path $cms "Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
 
 # Consulta simple
 sqlite3 $dbPath "SELECT nodeId, text, nodeObjectType FROM umbracoNode LIMIT 20;"
@@ -263,7 +276,7 @@ function Invoke-SqliteQuery {
 Estas son seguras con el CMS corriendo (solo lectura):
 
 ```powershell
-$db = "Synergos.CMS\Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
+$db = Join-Path $cms "Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
 
 # 7A. Ver todos los DocTypes en el DB
 sqlite3 $db -column -header @"
@@ -395,7 +408,7 @@ function Restore-SynergosSqlite {
     # 1. Asegurar que el CMS está detenido
     Stop-CmsSafe
 
-    $dbPath  = "Synergos.CMS\Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
+    $dbPath  = Join-Path $cms "Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
     $walPath = "$dbPath-wal"
     $shmPath = "$dbPath-shm"
 
@@ -424,19 +437,19 @@ function Restore-SynergosSqlite {
         Write-Error "Buscar un backup más antiguo."
     } else {
         Write-Output "Restore exitoso. Integridad OK."
-        Write-Output "Backups disponibles en: C:\Users\HITMA\Desktop\synergos-backups\"
+        Write-Output "Backups disponibles en: $backups"
         Write-Output "Reiniciar el CMS para verificar que arranca correctamente."
     }
 }
 
 # Uso — listar backups disponibles y elegir:
-Get-ChildItem "C:\Users\HITMA\Desktop\synergos-backups" "*.sqlite.db" |
+Get-ChildItem $backups "*.sqlite.db" |
     Sort-Object LastWriteTime -Descending |
     Select-Object Name, LastWriteTime, @{N="MB"; E={[Math]::Round($_.Length/1MB, 2)}} |
     Format-Table -AutoSize
 
 # Luego:
-# Restore-SynergosSqlite "C:\Users\HITMA\Desktop\synergos-backups\Umbraco-pre-import-20260606-143022.sqlite.db"
+# Restore-SynergosSqlite (Join-Path $backups "Umbraco-pre-import-20260606-143022.sqlite.db")
 ```
 
 ---
@@ -450,7 +463,7 @@ Ejecutar periódicamente para reducir tamaño y mejorar performance:
 Stop-CmsSafe
 $backup = Backup-SynergosSqlite -Reason "pre-vacuum"
 
-$db = "Synergos.CMS\Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
+$db = Join-Path $cms "Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
 
 # Checkpoint WAL completo primero
 sqlite3 $db "PRAGMA wal_checkpoint(TRUNCATE);"
@@ -497,7 +510,7 @@ Write-Output "ANALYZE completado."
 |--------|-------|-------------|
 | Crear/modificar DocTypes/DataTypes | Rompe consistencia con uSync | Usar uSync XMLs + Import |
 | Cambiar `uniqueId` de nodos | Los GUIDs son referencias externas | Nunca cambiar |
-| Borrar filas de `umbracoNode` directamente | Cascadas inconsistentes | Usar Management API `DELETE /document/{key}` |
+| Borrar filas de `umbracoNode` directamente | Cascadas inconsistentes | Borrarlo desde el backoffice (papelera y cascadas de Umbraco), o `POST /dev/delete-page?pageId=…&expectedName=…` con el flag DevSeed (exige el nombre esperado a propósito) |
 | Modificar `umbracoLanguage` sin reiniciar | El cache de idiomas no se invalida | Reiniciar CMS después |
 | Tocar tablas de `cmsTemplate` | Rompe el routing de vistas | Usar uSync Templates |
-| Editar `cmsMember` passwords | Los hashes tienen salt específico | Usar el API `/member/{key}/change-password` |
+| Editar `cmsMember` passwords | Los hashes tienen salt específico | Cambiarla desde el backoffice (Members): el hash lo calcula Umbraco |

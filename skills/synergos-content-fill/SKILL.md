@@ -1,6 +1,6 @@
 ---
 name: synergos-content-fill
-description: Autoría server-side de contenido editorial en Synergos (Umbraco 13) con TODOS los campos diligenciados. Descubre los campos resolviendo la cadena de compositions, serializa cada valor por DataType para IContentService, aplica la regla de cultura por-propiedad, fuerza mandatory + alt text, y construye BlockGrid editor-safe. Umbraco 13 NO tiene Management API — la autoría es C# server-side detrás del flag DevSeed. Requiere CMS en http://synergos.local:5000.
+description: Autoría server-side de contenido editorial en Synergos (Umbraco 13) con TODOS los campos diligenciados. Descubre los campos resolviendo la cadena de compositions, serializa cada valor por DataType para IContentService, aplica la regla de cultura por-propiedad, fuerza mandatory + alt text, y construye BlockGrid editor-safe. Umbraco 13 NO tiene Management API — la autoría es C# server-side detrás del flag DevSeed. Requiere el CMS corriendo (SYNERGOS_CMS_URL).
 model: claude-opus-4-8
 ---
 
@@ -29,19 +29,20 @@ Skill de **completitud**: poblar contenido editorial con cada campo correcto, po
 ## 1. Pre-flight
 
 ```powershell
+# $base: synergos-guardrails/references/entorno.md
 # CMS vivo (el sitio público responde; el keepalive ping da 404 en 13 — usar /)
-try { Invoke-WebRequest "http://synergos.local:5000/" -UseBasicParsing -TimeoutSec 5 | Out-Null; "CMS OK" }
-catch { Write-Error "CMS no responde. Arrancar con dotnet run en Synergos.CMS.Web/ (ver synergos-run-dev)"; exit 1 }
+try { Invoke-WebRequest "$base/" -UseBasicParsing -TimeoutSec 5 | Out-Null; "CMS OK" }
+catch { Write-Error "CMS no responde. Arrancarlo con synergos-run-dev"; exit 1 }
 
 # DevSeed habilitado?
-$ping = Invoke-RestMethod "http://synergos.local:5000/dev/ping"
+$ping = Invoke-RestMethod "$base/dev/ping"
 if (-not $ping.devSeedEnabled) { Write-Error "Synergos:DevSeed:Enabled=false. Habilitar en appsettings.Development.json"; exit 1 }
 "DevSeed ON"
 ```
 
 La autoría se dispara invocando endpoints `/dev/*` (`[AllowAnonymous]`, no requieren token):
 ```powershell
-Invoke-RestMethod "http://synergos.local:5000/dev/fill-synergos-pages" -Method POST
+Invoke-RestMethod "$base/dev/fill-synergos-pages" -Method POST
 ```
 
 ---
@@ -223,4 +224,4 @@ Como el formato de algunos editores es sutil, **verifica empíricamente** antes 
 - ADR 0012 — CDN consumido; bloques CDN como placeholder.
 - Memorias: [[project_umbraco13_no_management_api]], [[feedback_serverside_blockgrid_authoring]], [[feedback_variations_culture_default]], [[feedback_picker_semantics]].
 - Código de referencia: `Services/{SchemaBlockDefaults,BlockGridJsonBuilder,DevContentFiller,SynergosIdentitySeeder}.cs`, `Controllers/DevController.cs`.
-- Hermanos: `synergos-cms-author` (crea schema), `synergos-media-upload` (media — pendiente realinear a IMediaService).
+- Hermanos: `synergos-cms-author` (crea schema), `synergos-media-upload` (genera la imagen y la registra por `DevMediaFactory` o el backoffice).

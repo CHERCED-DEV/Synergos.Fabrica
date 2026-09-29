@@ -1,6 +1,6 @@
 ---
 name: synergos-cms-author
-description: Full-stack authoring de Synergos CMS. Crea contenido Editorial vía Management API (todos los campos diligenciados, imágenes generadas y subidas), Y cuando no existe el ElementType/Composition/DataType necesario, lo crea completo (uSync XML + Razor view SynHost + componente Angular standalone). Conoce el 100% del schema vivo. Requiere CMS en http://synergos.local:5000.
+description: Authoring full-stack del SCHEMA de Synergos CMS — cuando no existe el ElementType/Composition/DataType necesario, lo crea completo (uSync XML + Razor view SynHost + componente Angular standalone), leyendo el schema vivo de uSync/v9/. El contenido editorial y la media no los crea esta skill: se autoran server-side (IContentService/IMediaService detrás del flag DevSeed) con synergos-content-fill y synergos-media-upload.
 model: claude-opus-4-8
 ---
 
@@ -11,13 +11,13 @@ Skill integral que cubre tres capas en un solo flujo:
 1. **Schema** — crea ElementTypes, Compositions y DataTypes (uSync XML) cuando no existe el adecuado.
 2. **Razor views** — crea los partials SynHost + Block Grid wrappers para SSR.
 3. **Angular components** — crea el stub del Web Component (standalone, zoneless, signal inputs).
-4. **Content** — crea nodos editoriales en Umbraco vía Management API con todos los campos diligenciados.
-5. **Media** — genera imágenes PNG y las sube automáticamente para campos MediaPicker3.
+4. **Content** — NO es de esta skill: el contenido se autora server-side → `synergos-content-fill`.
+5. **Media** — NO es de esta skill: generar y registrar imágenes → `synergos-media-upload`.
 
 ---
 
 > ## ⚠️ AVISO (ADR 0093) — La autoría de contenido NO usa la Management API
-> Umbraco 13 **no tiene Management API** (`/umbraco/management/api/*` → 404; el paquete `Umbraco.Cms.Api.Management` empieza en v14). **La §1 (token) y la §7 (POST /v1/document, /v1/media) de este skill NO funcionan en este stack.** Para crear/llenar contenido y media usa la vía server-side `IContentService`/`IMediaService` detrás del flag DevSeed: ver **`synergos-content-fill`** y **ADR 0093**. Las secciones de schema (uSync XML §2-§4), Razor (§5) y Angular (§6) de este skill siguen vigentes.
+> Umbraco 13 **no tiene Management API** (`/umbraco/management/api/*` → 404; el paquete `Umbraco.Cms.Api.Management` empieza en v14). Esta skill vivía de un flujo token + POST que no existe en este stack, y **se cortó** (#141): para crear/llenar contenido y media usa la vía server-side `IContentService`/`IMediaService` detrás del flag DevSeed — **`synergos-content-fill`**, **`synergos-media-upload`** y **ADR 0093**. Lo que queda acá es schema (uSync XML §2-§4), Razor (§5) y Angular (§6).
 
 ## 0. Reglas que no se rompen
 
@@ -36,20 +36,13 @@ Skill integral que cubre tres capas en un solo flujo:
 
 ## 1. Pre-flight
 
-```powershell
-# Verificar CMS vivo
-try {
-    Invoke-WebRequest "http://synergos.local:5000/umbraco/api/keepalive/ping" -UseBasicParsing -TimeoutSec 5 | Out-Null
-    Write-Output "CMS OK"
-} catch { Write-Error "CMS no responde. Arrancar con 'dotnet run' en Synergos.CMS.Web/"; exit 1 }
+Escribir schema no necesita el CMS corriendo: es XML en el disco. El CMS hace falta para el Import
+(lo corre el arquitecto) y para verlo en el backoffice.
 
-# Autenticar
-$baseUrl  = "http://synergos.local:5000"
-$authBody = "grant_type=password&client_id=umbraco-back-office&username=admin%40synergos.local&password=REDACTADO-150"
-$authResp = Invoke-RestMethod "$baseUrl/umbraco/management/api/v1/security/back-office/token" `
-    -Method POST -ContentType "application/x-www-form-urlencoded" -Body $authBody
-$token   = $authResp.access_token
-$headers = @{ "Authorization" = "Bearer $token"; "Accept" = "application/json" }
+```powershell
+# $cms, $ui, $base: synergos-guardrails/references/entorno.md
+try { Invoke-WebRequest "$base/_health" -UseBasicParsing -TimeoutSec 5 | Out-Null; Write-Output "CMS OK" }
+catch { if ($_.Exception.Response) { Write-Output "CMS arriba, con alguna probe en rojo" } else { Write-Warning "El CMS no contesta en $base — hará falta para el Import (synergos-run-dev)" } }
 ```
 
 ---
@@ -59,7 +52,7 @@ $headers = @{ "Authorization" = "Bearer $token"; "Accept" = "application/json" }
 ### 2A. Encontrar ElementTypes por familia
 
 ```powershell
-$schemaRoot = "Synergos.CMS\Synergos.CMS.Web\uSync\v9\ContentTypes"
+$schemaRoot = Join-Path $cms "Synergos.CMS.Web\uSync\v9\ContentTypes"
 
 # Por familia:
 Get-ChildItem $schemaRoot "elementSyn*.config"     # CDN-hosted (elementSynHero, etc.)
@@ -218,12 +211,12 @@ Crear cuando:
 $g = [guid]::NewGuid().ToString()
 
 # Quad-check contra TODOS los XMLs uSync (ContentTypes + DataTypes + Templates + Dictionary + MediaTypes)
-$hits = Get-ChildItem "Synergos.CMS\Synergos.CMS.Web\uSync\" -Recurse -Filter "*.config" |
+$hits = Get-ChildItem (Join-Path $cms "Synergos.CMS.Web\uSync") -Recurse -Filter "*.config" |
     Select-String -Pattern $g -SimpleMatch
 if ($hits) { Write-Error "GUID collision: $g. Generar nuevo."; exit 1 }
 
 # También check en código C# por si acaso
-$codeHits = Get-ChildItem "Synergos.CMS\" -Recurse -Filter "*.cs" |
+$codeHits = Get-ChildItem $cms -Recurse -Filter "*.cs" |
     Select-String -Pattern $g -SimpleMatch
 if ($codeHits) { Write-Error "GUID en código: $g. Generar nuevo."; exit 1 }
 
@@ -415,7 +408,7 @@ Write-Output "GUID verificado: $g — 0 colisiones"
 ### 4G. Trigger uSync Import
 
 **Después de escribir cualquier XML nuevo**, el arquitecto debe:
-1. Abrir el backoffice en `http://synergos.local:5000/umbraco/`
+1. Abrir el backoffice en `$base/umbraco/` (`synergos-guardrails/references/entorno.md`)
 2. Ir a Settings → uSync → Import
 3. Seleccionar "Import All" (no-destructive first pass)
 4. Verificar que el nuevo tipo aparece en Content Types (Content Types section)
@@ -533,72 +526,33 @@ Write-Output "GUID verificado: $g — 0 colisiones"
 
 ### 6A. Estructura de archivos
 
+**La plantilla viva es un elemento existente del mismo tier**, no esta skill: copiá su forma. Hoy un
+elemento es:
+
 ```
-platforms/angular/apps/elements/{tier}/{name}/
-├── project.json
+platforms/angular/apps/elements/<tier>/<name>/
 ├── tsconfig.app.json
+├── tsconfig.json
+├── tsconfig.spec.json
 └── src/
     ├── main.ts
     ├── app.config.ts
     ├── index.html
-    └── {name}/
-        ├── {name}.ts
-        ├── {name}.html
-        └── {name}.scss
+    └── <name>/
+        ├── <name>.ts
+        ├── <name>.html
+        ├── <name>.scss
+        └── <name>.spec.ts
 ```
 
-Donde `{tier}` = `primitive` / `composition` / `module` / `experience`.
+Los tiers son las carpetas que existan bajo `platforms/angular/apps/elements/` (en plural); el
+valor `tier` del registro va en singular (`primitive` / `composition` / `module`).
 
-### 6B. project.json
+### 6B. No hay descriptor de proyecto
 
-```json
-{
-  "name": "elements-{tier}-{name}",
-  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
-  "projectType": "application",
-  "prefix": "sg",
-  "sourceRoot": "apps/elements/{tier}/{name}/src",
-  "tags": [
-    "scope:elements",
-    "tier:{tier}",
-    "type:app",
-    "element:{name}",
-    "framework:angular"
-  ],
-  "targets": {
-    "build": {
-      "executor": "@angular/build:application",
-      "outputs": ["{options.outputPath}"],
-      "options": {
-        "outputPath": "dist/{name}",
-        "browser": "apps/elements/{tier}/{name}/src/main.ts",
-        "index": "apps/elements/{tier}/{name}/src/index.html",
-        "tsConfig": "apps/elements/{tier}/{name}/tsconfig.app.json"
-      },
-      "configurations": {
-        "production": {
-          "budgets": [
-            { "type": "initial", "maximumWarning": "80kb", "maximumError": "200kb" }
-          ]
-        }
-      }
-    },
-    "serve": {
-      "executor": "@angular/build:dev-server",
-      "options": { "port": 43XX }
-    },
-    "lint": {
-      "executor": "@nx/eslint:lint",
-      "options": {
-        "lintFilePatterns": [
-          "apps/elements/{tier}/{name}/src/**/*.ts",
-          "apps/elements/{tier}/{name}/src/**/*.html"
-        ]
-      }
-    }
-  }
-}
-```
+El build no se configura por elemento: `platforms/angular/tools/build.mjs` compila todas las carpetas
+que tengan un `src/main.ts`, y ése es su nombre en `dist/` y en el CDN. El presupuesto de tamaño es
+uno para todo el CDN (`tools/lib/cdn-size-budget.mjs`), no un campo del elemento.
 
 ### 6C. {name}.ts — Componente principal (standalone, zoneless, signal inputs)
 
@@ -730,37 +684,22 @@ export const appConfig: ApplicationConfig = {
 
 ### 6G. main.ts — Registro del Custom Element
 
+La forma viva es la de cualquier elemento existente: registra por `@synergos/core`, que es lo que
+honra el protocolo de elementos de la plataforma (Synergos.UI#62).
+
 ```typescript
-import { createApplication } from '@angular/platform-browser';
-import { createCustomElement } from '@angular/elements';
+import { registrarElementoAngular } from '@synergos/core';
 import { appConfig } from './app.config';
 import { {Pascal}ElementComponent } from './{name}/{name}';
 
-createApplication(appConfig).then((appRef) => {
-  if (!customElements.get('synergos-{kebab}')) {
-    const Element = createCustomElement({Pascal}ElementComponent, {
-      injector: appRef.injector,
-    });
-    customElements.define('synergos-{kebab}', Element);
-  }
-});
+registrarElementoAngular('synergos-{kebab}', {Pascal}ElementComponent, appConfig);
 ```
 
-### 6H. Actualizar registry.json
+### 6H. El registry del CDN NO se edita a mano
 
-Agregar entrada al final del array en `C:\LOCAL_CDN\synergos\registry.json`:
-
-```json
-{
-  "name": "{name}",
-  "alias": "elementSyn{Pascal}",
-  "tag": "synergos-{kebab}",
-  "tier": "{tier}",
-  "implementations": {
-    "angular": { "latest": "0.1.0", "v0": "0.1.0" }
-  }
-}
-```
+`registry.json` lo escribe `tools/publish.mjs` al publicar, a partir del registro fuente (6I) y de lo
+que haya en `dist/`. Editarlo a mano se pisa en la próxima publicación. Publicar es
+`synergos-cdn-build` (`npm run build:cdn`).
 
 ### 6I. Actualizar vitals/contracts/
 
@@ -785,218 +724,23 @@ Agregar al `element-registry.json`:
 { "name": "{name}", "alias": "elementSyn{Pascal}", "tag": "synergos-{kebab}", "tier": "{tier}" }
 ```
 
-Luego regenerar el catálogo:
-```bash
-node Synergos.UI/tools/refresh-skill-catalog.mjs
-```
+El catálogo de elementos se consulta del disco, no de una foto: `npm run catalog` en la UI genera
+`catalog.html` desde `element-registry.json`, `element-inputs.json` y el `registry.json` publicado.
 
 ---
 
-## 7. Creación de contenido ~~vía Management API~~ → DEPRECADO en Umbraco 13
+## 7. Contenido y media — no son de esta skill
 
-> ⛔ **Esta sección asume la Management API que NO existe en Umbraco 13 (404).** No la uses.
-> La autoría real es server-side con `IContentService` — ver **`synergos-content-fill`** + **ADR 0093**.
-> Se conserva abajo solo como referencia histórica del formato de valores (algunos formatos JSON aplican igual al valor de almacenamiento que recibe `IContentService.SetValue`).
+El contenido editorial y la media se autoran **server-side** (ADR 0093): `IContentService` /
+`IMediaService` detrás del flag `Synergos:DevSeed:Enabled`, invocados por un endpoint `/dev/*`.
 
-### [HISTÓRICO] Creación de contenido vía API
+- Contenido, con TODOS los campos: **`synergos-content-fill`** — su §4 es la tabla canónica del
+  valor de almacenamiento por DataType (verificada en vivo), su §6 el BlockGrid editor-safe.
+- Imágenes: **`synergos-media-upload`** — generarlas y registrarlas (`DevMediaFactory` o el
+  backoffice).
 
-### 7A. Generación de valores por tipo de campo
-
-| EditorAlias | Formato valor API | Estrategia de generación |
-|-------------|-------------------|-------------------------|
-| `Umbraco.TextBox` | `"string"` | 1 frase editorial es-CO contextual al campo |
-| `Umbraco.TextArea` | `"string\npárrafo2"` | 2-3 frases descriptivas sin HTML |
-| `Umbraco.TinyMCE` | `"<p>HTML</p>"` | 2 párrafos con `<strong>` mínimo |
-| `Umbraco.Integer` | `0` (int) | Inferir del alias: sortOrder→0, columns→3, max→10, height→400 |
-| `Umbraco.TrueFalse` | `true`/`false` | hidden/disabled→false; active/enabled/featured→true |
-| `Umbraco.DropDown.Flexible` | `"value"` | Leer DataType → tomar primer value; o el más contextual |
-| `Umbraco.DateTime` | `"2026-06-06"` | publishDate/start→hoy; expiry/end→+1año |
-| `Umbraco.MediaPicker3` | Ver §7C | Flujo completo de generación + upload |
-| `Umbraco.ImageCropper` | Ver §7C | Flujo completo de generación + upload |
-| `Umbraco.MultiUrlPicker` | `"[{\"name\":\"Ver más\",\"url\":\"/\",\"target\":null,\"queryString\":null,\"udi\":null}]"` | Link genérico coherente |
-| `Umbraco.ContentPicker` | `"umb://document/{guid}"` | Buscar nodo root vía GET /document |
-| `Umbraco.Tags` | `"tag1,tag2"` | 2-4 tags relevantes |
-| `Umbraco.BlockList` | Ver §7D | Generar 1-3 ítems |
-| `Umbraco.BlockGrid` | Ver §7E | Estructura mínima Section + Container |
-| `Umbraco.Label` | **OMITIR** | Solo lectura — Umbraco lo calcula |
-
-### 7B. Autenticación (reusar del pre-flight — token ~60min)
-
-Guardar `$token` y `$headers` desde §1. Si expira, re-autenticar.
-
-### 7C. MediaPicker3 / ImageCropper — Upload inline
-
-```powershell
-Add-Type -AssemblyName System.Drawing
-
-function New-SynPlaceholder {
-    param([string]$Title, [string]$Subtitle="", [int]$W=1200, [int]$H=630,
-          [string]$Bg="#0F58A7", [string]$Out)
-    $bmp = New-Object System.Drawing.Bitmap($W, $H)
-    $g   = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-    $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
-    $g.Clear([System.Drawing.ColorTranslator]::FromHtml($Bg))
-    $g.FillRectangle(
-        (New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(55,0,0,0))),
-        0, [int]($H*0.65), $W, [int]($H*0.35))
-    $fs   = [Math]::Max(32, [Math]::Min(62, $W/19))
-    $font = New-Object System.Drawing.Font("Segoe UI", $fs, [System.Drawing.FontStyle]::Bold)
-    $sf   = New-Object System.Drawing.StringFormat
-    $sf.Alignment = $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
-    $g.DrawString($Title, $font, [System.Drawing.Brushes]::White,
-        (New-Object System.Drawing.RectangleF(60, 50, ($W-120), ($H*0.58))), $sf)
-    $font.Dispose()
-    if ($Subtitle) {
-        $fs2   = [Math]::Max(18, $fs*0.52)
-        $font2 = New-Object System.Drawing.Font("Segoe UI", $fs2)
-        $b2    = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(210,255,255,255))
-        $g.DrawString($Subtitle, $font2, $b2,
-            (New-Object System.Drawing.RectangleF(60, [int]($H*0.63), ($W-120), [int]($H*0.28))), $sf)
-        $font2.Dispose(); $b2.Dispose()
-    }
-    $g.FillRectangle([System.Drawing.Brushes]::White, 60, ($H-18), 72, 6)
-    $g.Dispose()
-    $bmp.Save($Out, [System.Drawing.Imaging.ImageFormat]::Png)
-    $bmp.Dispose()
-}
-
-function Upload-SynMedia {
-    param([string]$Title, [string]$AltText, [string]$BgHex="#0F58A7",
-          [int]$W=1200, [int]$H=630)
-    # 1. Generar imagen
-    $slug = ($Title -replace '[^a-zA-Z0-9]', '-').ToLower() -replace '-+', '-'
-    $tmp  = [System.IO.Path]::Combine($env:TEMP, "syn-$slug-$([guid]::NewGuid().ToString('N').Substring(0,6)).png")
-    New-SynPlaceholder -Title $Title -BgHex $BgHex -W $W -H $H -Out $tmp
-
-    # 2. Crear nodo media
-    $body = @{
-        contentTypeKey = "bcc6d08c-509e-4ab6-8d8b-c00c6199253f"
-        parentKey      = $null
-        values         = @(@{ alias="altDefault"; value=$AltText; culture=$null; segment=$null })
-    } | ConvertTo-Json -Depth 5 -Compress
-    $node = Invoke-RestMethod "$baseUrl/umbraco/management/api/v1/media" `
-        -Method POST -Headers $headers -ContentType "application/json; charset=utf-8" `
-        -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
-    $mediaKey = $node.id
-
-    # 3. Subir archivo
-    Add-Type -AssemblyName System.Net.Http
-    $client = [System.Net.Http.HttpClient]::new()
-    $client.DefaultRequestHeaders.Add("Authorization", "Bearer $token")
-    $mp = [System.Net.Http.MultipartFormDataContent]::new()
-    $bc = [System.Net.Http.ByteArrayContent]::new([System.IO.File]::ReadAllBytes($tmp))
-    $bc.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::new("image/png")
-    $mp.Add($bc, "file", [System.IO.Path]::GetFileName($tmp))
-    $r = $client.PostAsync("$baseUrl/umbraco/management/api/v1/media/$mediaKey/file", $mp).GetAwaiter().GetResult()
-    if (-not $r.IsSuccessStatusCode) {
-        Write-Error "Upload fallido: $($r.Content.ReadAsStringAsync().GetAwaiter().GetResult())"; exit 1
-    }
-    $client.Dispose()
-    Remove-Item $tmp -Force
-
-    # 4. Retornar valor para el campo
-    $pickerValue = "[{`"key`":`"$mediaKey`",`"mediaKey`":`"$mediaKey`",`"focalPoint`":null,`"crops`":[]}]"
-    return @{ mediaKey = $mediaKey; pickerValue = $pickerValue }
-}
-
-# Uso:
-$imgResult = Upload-SynMedia -Title "Hero de Home" -AltText "Imagen del hero principal" -BgHex "#0A2540"
-$values += @{ alias="media"; value=$imgResult.pickerValue; culture="es-co"; segment=$null }
-```
-
-### 7D. BlockList — generar ítems
-
-```powershell
-function New-BlockListValue {
-    param([string]$ElementTypeKey, [hashtable[]]$ItemProps, [int]$Count=2)
-
-    $items = 1..$Count | ForEach-Object {
-        $udi = "umb://element/$([guid]::NewGuid().ToString('N'))"
-        @{ udi=$udi; contentTypeKey=$ElementTypeKey; props=$ItemProps }
-    }
-
-    $layout = @{
-        "Umbraco.BlockList" = @($items | ForEach-Object { @{ contentUdi=$_.udi } })
-    }
-    $contentData = $items | ForEach-Object {
-        $obj = @{ contentTypeKey=$_.contentTypeKey; udi=$_.udi }
-        $_.props | ForEach-Object { $obj[$_.alias] = $_.value }
-        $obj
-    }
-
-    return (@{ layout=$layout; contentData=@($contentData); settingsData=@() } | ConvertTo-Json -Depth 15 -Compress)
-}
-
-# Ejemplo — CTAs (usa elementActionButton Key: 2d8d712e-66ec-4052-a627-0ad8a68d0d38)
-$ctaProps = @(
-    @{ alias="label"; value="Ver más" }
-    @{ alias="variant"; value="primary" }
-)
-$ctaValue = New-BlockListValue -ElementTypeKey "2d8d712e-66ec-4052-a627-0ad8a68d0d38" -ItemProps $ctaProps -Count 2
-```
-
-### 7E. BlockGrid — estructura mínima
-
-```powershell
-function New-MinimalSections {
-    param([string]$SectionKey   = "1c68f4a9-24e9-49ac-9efa-05b3d4b1404a",   # elementLayoutSection
-          [string]$ContainerKey = "f39c535a-879f-4bbf-8d94-8370c7f45f5a")   # elementLayoutContainer
-
-    $sUdi = "umb://element/$([guid]::NewGuid().ToString('N'))"
-    $cUdi = "umb://element/$([guid]::NewGuid().ToString('N'))"
-
-    $layout = @{
-        "Umbraco.BlockGrid" = @(@{
-            contentUdi  = $sUdi
-            areas       = @(@{
-                key   = "sectionContent"
-                items = @(@{ contentUdi=$cUdi; areas=@() })
-            })
-            columnSpan = 12
-            rowSpan    = 1
-        })
-    }
-    $contentData = @(
-        @{ contentTypeKey=$SectionKey;   udi=$sUdi }
-        @{ contentTypeKey=$ContainerKey; udi=$cUdi }
-    )
-    return (@{ layout=$layout; contentData=@($contentData); settingsData=@() } | ConvertTo-Json -Depth 15 -Compress)
-}
-
-$sectionsValue = New-MinimalSections
-```
-
-### 7F. Construir payload y crear documento
-
-```powershell
-$docPayload = @{
-    documentTypeKey = $contentTypeKey  # GUID del ContentType
-    parentKey       = $parentKey       # GUID del padre o $null
-    values          = @($values)       # array de @{alias, value, culture, segment}
-    variants        = @(@{
-        culture     = "es-co"
-        segment     = $null
-        name        = $nodeName
-        publishDate = $null
-    })
-} | ConvertTo-Json -Depth 15 -Compress
-
-$doc    = Invoke-RestMethod "$baseUrl/umbraco/management/api/v1/document" `
-    -Method POST -Headers $headers -ContentType "application/json; charset=utf-8" `
-    -Body ([System.Text.Encoding]::UTF8.GetBytes($docPayload))
-$docKey = $doc.id
-```
-
-### 7G. Publicar
-
-```powershell
-$pub = @{ publishSchedules=@(@{ culture="es-co"; schedule=$null }) } |
-    ConvertTo-Json -Depth 5 -Compress
-Invoke-RestMethod "$baseUrl/umbraco/management/api/v1/document/$docKey/publish" `
-    -Method PUT -Headers $headers -ContentType "application/json; charset=utf-8" `
-    -Body ([System.Text.Encoding]::UTF8.GetBytes($pub))
-```
+> Esta sección era un flujo token + `POST /v1/document` contra una API que Umbraco 13 no tiene; se
+> cortó en el #141. Los formatos de valor que servían están en `synergos-content-fill` §4.
 
 ---
 
@@ -1006,22 +750,16 @@ Invoke-RestMethod "$baseUrl/umbraco/management/api/v1/document/$docKey/publish" 
 - [ ] GUIDs generados con `[guid]::NewGuid()` y quad-checked
 - [ ] XML uSync escrito en la carpeta correcta con encoding UTF-8
 - [ ] Alias sigue naming convention (§4A)
-- [ ] Icono verificado en `reference_umbraco13_icons.txt`
+- [ ] Icono verificado contra `tools/umbraco13-icons-stock.txt` del CMS (`node tools/usync-audit.mjs` lo cruza)
 - [ ] Descripciones ≤120 chars, sin jargon ADR
 - [ ] Se avisó al arquitecto para hacer uSync Import manual
 - [ ] Si es `elementSyn*`: Razor wrapper + SynHost renderer creados (§5A, §5B)
-- [ ] Si es `elementSyn*` CDN: Angular component creado (§6) + registry.json actualizado
-- [ ] `vitals/contracts/elements-syn.contract.ts` actualizado
-- [ ] `refresh-skill-catalog.mjs` ejecutado
+- [ ] Si es `elementSyn*` CDN: Angular component creado (§6) + entrada en `element-registry.json` (6I)
+- [ ] `vitals/contracts/src/elements-syn.contract.ts` actualizado
+- [ ] Publicado con `synergos-cdn-build` y verificado que hidrata (`synergos-app-verify`)
 
-### Si se creó contenido:
-- [ ] ContentType alias existe en uSync (no inventado)
-- [ ] Nodo padre verificado en el content tree
-- [ ] Campos obligatorios (`Mandatory=true`) todos diligenciados
-- [ ] Campos de imagen: alt text en `altDefault`
-- [ ] Valores Dropdown extraídos del DataType real (no inventados)
-- [ ] BlockGrid: GUIDs de layout presets verificados (§2D)
-- [ ] Documento publicado (`state="Published"` verificado vía GET)
+### Si hizo falta contenido:
+- [ ] Lo autoró `synergos-content-fill` y pasó SU checklist (§9 de esa skill)
 
 ---
 
@@ -1029,14 +767,10 @@ Invoke-RestMethod "$baseUrl/umbraco/management/api/v1/document/$docKey/publish" 
 
 | Error | Causa | Solución |
 |-------|-------|----------|
-| `400` en POST /document | Formato de valor incorrecto | MediaPicker y BlockList son strings JSON, no objetos directos |
-| `422` en POST /document | Campo mandatory faltante | Revisar `<Mandatory>true</Mandatory>` en el ContentType |
-| `409 Conflict` | Nombre duplicado bajo mismo padre | Cambiar `name` en el payload |
-| `401` en cualquier call | Token expirado | Re-autenticar desde §1 |
 | uSync Import falla | GUID collision o XML malformado | Re-verificar quad-check; abrir XML en editor para validar |
 | Razor `CS0234 IUmbracoHelper` | No usar `@inject IUmbracoHelper` en Razor | Usar `@inherits UmbracoViewPage<T>` + `ISynHostEmitter` (ADR 0059) |
 | `System.Drawing` no carga | GDI+ no disponible | Usar fallback SVG (generar como texto plano) |
-| Custom element no hidrata | bundle CDN no publicado | Normal — `StubBundleRegistryClient` emite placeholder. Bundle disponible solo cuando CDN team publique (ADR 0012) |
+| Custom element no hidrata | bundle no publicado, o el CMS en `Mode=Stub` | Publicar con `synergos-cdn-build` (`npm run build:cdn`); `node tools/humo-conectado.mjs` nombra la causa |
 | Angular `NG0100` change detection | Zona activa (no zoneless) | Verificar `provideZonelessChangeDetection` en `app.config.ts` |
 | `customElements.get` ya definido | Doble import del script | El guard `if (!customElements.get(...))` en `main.ts` previene esto |
 
@@ -1047,8 +781,8 @@ Invoke-RestMethod "$baseUrl/umbraco/management/api/v1/document/$docKey/publish" 
 - `Synergos.CMS/CLAUDE.md` — 10 principios + dónde está la verdad
 - `refactor-docs/architecture/00-current-state-synergos-cms.md §11` — estado real
 - `refactor-docs/architecture/06-composition-design-principles.md` — filtro 3 preguntas
-- `Synergos.CMS.Web/docs/contracts/` — 5 contratos CMS↔UI (ADR 0083)
-- `Synergos.CMS.Web/docs/adr/` — 92 ADRs ratificados
-- `references/ui-elements-catalog.md` — los bundles publicados
-- `references/cms-to-ui-mapping.md` — alias CMS ↔ tag DOM ↔ bundle URL
+- `Synergos.CMS.Web/docs/contracts/` — los contratos CMS↔UI (ADR 0083)
+- `Synergos.CMS.Web/docs/adr/` — los ADRs ratificados (su `README.md` es el índice)
+- `synergos-architect/references/ui-elements-catalog.md` — foto de los bundles publicados (la lista viva: `npm run catalog` en la UI)
+- `synergos-architect/references/cms-to-ui-mapping.md` — alias CMS ↔ tag DOM ↔ bundle URL
 - `vitals/contracts/src/elements-syn.contract.ts` — schema mirrors TS

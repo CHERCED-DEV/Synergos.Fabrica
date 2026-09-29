@@ -1,158 +1,118 @@
 ---
 name: synergos-health-check
-description: Diagnóstico rápido del stack completo de Synergos — CMS ping, Management API, bundle registry, CDN estático, DB integridad, Swagger. Genera un reporte semáforo (OK/WARN/FAIL) en menos de 30 segundos. Punto de partida de cualquier sesión de trabajo o verificación post-deploy.
+description: Diagnóstico rápido del stack de Synergos — /_health del CMS (sus probes con nombre), bundle registry y CDN estático, sitio público, integridad de la DB, respaldo reciente y el audit del schema uSync. Genera un reporte semáforo (OK/WARN/FAIL) en segundos. Punto de partida de cualquier sesión de trabajo o verificación post-deploy.
 model: claude-opus-4-8
 ---
 
-# SYNERGOS Health Check — diagnóstico completo del stack
+# SYNERGOS Health Check — diagnóstico del stack
 
 Ejecutar al inicio de cada sesión y después de cualquier cambio de infraestructura.
+
+> **Un chequeo que no puede dar verde no es un chequeo.** Esta skill vivía de la Management API,
+> que Umbraco 13 no tiene (ADR 0093): reportaba `FAIL` en TODA corrida, por diseño, y un semáforo
+> siempre rojo deja de leerse y arrastra a los que sí dicen algo (#141, #142). Cada chequeo de abajo
+> pregunta algo que el stack de hoy puede contestar que sí.
 
 ---
 
 ## Script completo (ejecutar todo junto)
 
 ```powershell
-$base    = "http://synergos.local:5000"
-$cdnRoot = "C:\LOCAL_CDN\synergos"
-$dbPath  = "Synergos.CMS\Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
-$report  = [System.Collections.Generic.List[PSCustomObject]]::new()
-
-function Add-Check {
-    param([string]$Name, [string]$Status, [string]$Detail)
-    $report.Add([PSCustomObject]@{ Check=$Name; Status=$Status; Detail=$Detail })
+# $cms, $cdnRoot, $base, $backups: synergos-guardrails/references/entorno.md
+$dbPath = Join-Path $cms 'Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db'
+$report = New-Object System.Collections.Generic.List[PSCustomObject]
+function Add-Check([string]$Name, [string]$Status, [string]$Detail) {
+    $report.Add([PSCustomObject]@{ Check = $Name; Status = $Status; Detail = $Detail })
 }
 
-# ─── 1. CMS Ping ─────────────────────────────────────────────────────────────
+# ─── 1. /_health — el CMS dice cómo está, probe por probe ───────────────────
 try {
-    $r = Invoke-WebRequest "$base/umbraco/api/keepalive/ping" -UseBasicParsing -TimeoutSec 5
-    Add-Check "CMS Ping" "OK" "HTTP $($r.StatusCode)"
+    $r = Invoke-WebRequest "$base/_health" -UseBasicParsing -TimeoutSec 8
+    $cuerpo = $r.Content
 } catch {
-    Add-Check "CMS Ping" "FAIL" "CMS no responde — ejecutar synergos-run-dev"
+    $resp = $_.Exception.Response
+    $cuerpo = if ($resp) { (New-Object IO.StreamReader($resp.GetResponseStream())).ReadToEnd() } else { $null }
+}
+if ($cuerpo) {
+    $salud = $cuerpo | ConvertFrom-Json
+    $rojas = @($salud.checks | Where-Object { -not $_.healthy })
+    $estado = if ($rojas.Count -eq 0) { 'OK' } else { 'FAIL' }
+    Add-Check 'CMS /_health' $estado "status=$($salud.status) · versión=$($salud.version) · $(@($salud.checks).Count) probes"
+    foreach ($p in $rojas) { Add-Check "  probe $($p.name)" 'FAIL' $p.message }
+} else {
+    Add-Check 'CMS /_health' 'FAIL' "El CMS no contesta en $base — synergos-run-dev"
 }
 
-# ─── 2. Management API ───────────────────────────────────────────────────────
-$token = $null
+# ─── 2. Bundle registry, del disco ──────────────────────────────────────────
+$regPath = Join-Path $cdnRoot 'registry.json'
+$reg = $null
 try {
-    $auth = Invoke-RestMethod "$base/umbraco/management/api/v1/security/back-office/token" `
-        -Method POST -ContentType "application/x-www-form-urlencoded" `
-        -Body "grant_type=password&client_id=umbraco-back-office&username=admin%40synergos.local&password=REDACTADO-150" `
-        -TimeoutSec 8
-    $token = $auth.access_token
-    Add-Check "Management API" "OK" "Token obtenido (expira en $($auth.expires_in)s)"
+    $reg = Get-Content $regPath -Raw | ConvertFrom-Json
+    Add-Check 'Bundle Registry' 'OK' "$(@($reg.elements).Count) elementos — generado $($reg.generated)"
 } catch {
-    Add-Check "Management API" "FAIL" $_.Exception.Message
+    Add-Check 'Bundle Registry' 'FAIL' "No hay registry legible en $regPath — npm run build:cdn en la UI"
 }
 
-# ─── 3. Swagger UI ───────────────────────────────────────────────────────────
-try {
-    Invoke-WebRequest "$base/umbraco/swagger" -UseBasicParsing -TimeoutSec 5 | Out-Null
-    Add-Check "Swagger UI" "OK" "$base/umbraco/swagger"
-} catch {
-    Add-Check "Swagger UI" "WARN" "No accesible (no crítico en prod)"
+# ─── 3. CDN estático, servido por el CMS ────────────────────────────────────
+if ($reg -and $cuerpo) {
+    $el = @($reg.elements) | Where-Object { $_.implementations.angular } | Select-Object -First 1
+    if ($el) {
+        $url = "$base/cdn-bundles/synergos/$($el.name)/angular/latest/main.js"
+        try {
+            $r2 = Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 8
+            Add-Check 'CDN Static' 'OK' "$($el.name) → $($r2.StatusCode) — Cache-Control: $($r2.Headers['Cache-Control'])"
+        } catch { Add-Check 'CDN Static' 'FAIL' "Bundle no accesible: $url" }
+    } else { Add-Check 'CDN Static' 'WARN' 'El registry no trae ningún elemento con implementación angular' }
 }
 
-# ─── 4. Bundle Registry ──────────────────────────────────────────────────────
-try {
-    $reg = Get-Content "$cdnRoot\registry.json" -Raw | ConvertFrom-Json
-    $count = @($reg.elements).Count
-    Add-Check "Bundle Registry" "OK" "$count elementos — generado $($reg.generated)"
-} catch {
-    Add-Check "Bundle Registry" "FAIL" "registry.json no legible en $cdnRoot"
-}
-
-# ─── 5. CDN Static Files ─────────────────────────────────────────────────────
-try {
-    if ($count -gt 0) {
-        $el  = @($reg.elements)[0]
-        $ver = $el.implementations.angular.latest
-        $url = "$base/cdn-bundles/synergos/$($el.name)/angular/$ver/main.js"
-        $r2  = Invoke-WebRequest $url -UseBasicParsing -TimeoutSec 8
-        $kb  = [Math]::Round($r2.RawContentLength / 1024, 1)
-        Add-Check "CDN Static" "OK" "$($el.name) → $($r2.StatusCode) ($kb KB) — Cache: $($r2.Headers['Cache-Control'])"
-    } else {
-        Add-Check "CDN Static" "WARN" "Registry vacío — sin elementos para probar"
-    }
-} catch {
-    Add-Check "CDN Static" "FAIL" "Bundle no accesible: $url"
-}
-
-# ─── 6. Sitio Público ────────────────────────────────────────────────────────
+# ─── 4. Sitio público ───────────────────────────────────────────────────────
 try {
     $pub = Invoke-WebRequest "$base/" -UseBasicParsing -TimeoutSec 8
-    $hasHtml = $pub.Content -match '<html'
-    Add-Check "Sitio Público" "OK" "HTTP $($pub.StatusCode) — HTML: $hasHtml"
-} catch {
-    Add-Check "Sitio Público" "WARN" "Sitio no responde — puede no tener content aún"
-}
+    $vacio = $pub.Content -match 'No published content'
+    $importMap = $pub.Content -match '<script type="importmap"'
+    $estado = if ($vacio) { 'WARN' } elseif ($importMap) { 'OK' } else { 'FAIL' }
+    Add-Check 'Sitio Público' $estado "HTTP $($pub.StatusCode) · portada: $(-not $vacio) · import map: $importMap"
+} catch { Add-Check 'Sitio Público' 'WARN' 'El sitio no responde — ¿sin portada? (POST /dev/seed-portada)' }
 
-# ─── 7. DB Integrity ─────────────────────────────────────────────────────────
-try {
-    if (Test-Path $dbPath) {
-        $sqlite3 = Get-Command sqlite3 -ErrorAction SilentlyContinue
-        if ($sqlite3) {
-            $integrity = & sqlite3 $dbPath "PRAGMA integrity_check;" 2>&1
-            $status    = if ($integrity -eq "ok") { "OK" } else { "FAIL" }
-            $sizeMB    = [Math]::Round((Get-Item $dbPath).Length / 1MB, 2)
-            Add-Check "DB Integrity" $status "PRAGMA: $integrity — Tamaño: $sizeMB MB"
-        } else {
-            $sizeMB = [Math]::Round((Get-Item $dbPath).Length / 1MB, 2)
-            Add-Check "DB Integrity" "WARN" "sqlite3 CLI no disponible — DB existe ($sizeMB MB)"
-        }
-    } else {
-        Add-Check "DB Integrity" "WARN" "DB no encontrada — ¿primer arranque?"
-    }
-} catch {
-    Add-Check "DB Integrity" "WARN" $_.Exception.Message
-}
+# ─── 5. Integridad de la DB ─────────────────────────────────────────────────
+if (Test-Path $dbPath) {
+    $sizeMB = [Math]::Round((Get-Item $dbPath).Length / 1MB, 2)
+    if (Get-Command sqlite3 -ErrorAction SilentlyContinue) {
+        $integrity = & sqlite3 $dbPath 'PRAGMA integrity_check;' 2>&1
+        Add-Check 'DB Integrity' $(if ($integrity -eq 'ok') { 'OK' } else { 'FAIL' }) "PRAGMA: $integrity — $sizeMB MB"
+    } else { Add-Check 'DB Integrity' 'WARN' "sqlite3 no está en el PATH — la DB existe ($sizeMB MB)" }
+} else { Add-Check 'DB Integrity' 'WARN' 'DB no encontrada — ¿primer arranque?' }
 
-# ─── 8. Backups recientes ────────────────────────────────────────────────────
-try {
-    $backups = Get-ChildItem "C:\Users\HITMA\Desktop\synergos-backups" "*.sqlite.db" -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($backups) {
-        $age = [Math]::Round(((Get-Date) - $backups.LastWriteTime).TotalHours, 1)
-        $status = if ($age -gt 48) { "WARN" } else { "OK" }
-        Add-Check "Último Backup" $status "$($backups.Name) — hace $age h"
-    } else {
-        Add-Check "Último Backup" "WARN" "Sin backups — ejecutar synergos-db-ops backup"
-    }
-} catch {
-    Add-Check "Último Backup" "WARN" "Directorio de backups no encontrado"
-}
+# ─── 6. Respaldo reciente ───────────────────────────────────────────────────
+if ($backups -and (Test-Path $backups)) {
+    $ultimo = Get-ChildItem $backups -Filter '*.sqlite.db' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($ultimo) {
+        $age = [Math]::Round(((Get-Date) - $ultimo.LastWriteTime).TotalHours, 1)
+        Add-Check 'Último Backup' $(if ($age -gt 48) { 'WARN' } else { 'OK' }) "$($ultimo.Name) — hace $age h"
+    } else { Add-Check 'Último Backup' 'WARN' 'Sin backups — synergos-db-ops (backup)' }
+} else { Add-Check 'Último Backup' 'WARN' 'SYNERGOS_BACKUP_DIR sin definir o inexistente' }
 
-# ─── 9. Content types en DB ──────────────────────────────────────────────────
-if ($token) {
-    try {
-        $hdrs = @{ "Authorization" = "Bearer $token" }
-        $cts  = Invoke-RestMethod "$base/umbraco/management/api/v1/document-type?skip=0&take=1" -Headers $hdrs
-        Add-Check "Schema en DB" "OK" "$($cts.total) DocTypes registrados"
-    } catch {
-        Add-Check "Schema en DB" "WARN" "No se pudo consultar vía API"
-    }
-}
+# ─── 7. Schema uSync — el XML es la fuente (ADR 0008) ───────────────────────
+Push-Location $cms
+$audit = node tools/usync-audit.mjs 2>&1
+$auditExit = $LASTEXITCODE
+Pop-Location
+Add-Check 'Schema (usync-audit)' $(if ($auditExit -eq 0) { 'OK' } else { 'FAIL' }) ($audit | Select-Object -Last 1)
 
-# ─── Reporte ─────────────────────────────────────────────────────────────────
-$oks   = @($report | Where-Object Status -eq "OK").Count
-$warns = @($report | Where-Object Status -eq "WARN").Count
-$fails = @($report | Where-Object Status -eq "FAIL").Count
-
-$overall = if ($fails -gt 0) { "DEGRADADO" } elseif ($warns -gt 0) { "PARCIAL" } else { "SALUDABLE" }
-
-Write-Output ""
-Write-Output "═══════════════════════════════════════════════════════════"
+# ─── Reporte ────────────────────────────────────────────────────────────────
+$fails = @($report | Where-Object Status -eq 'FAIL').Count
+$warns = @($report | Where-Object Status -eq 'WARN').Count
+$oks   = @($report | Where-Object Status -eq 'OK').Count
+$overall = if ($fails -gt 0) { 'DEGRADADO' } elseif ($warns -gt 0) { 'PARCIAL' } else { 'SALUDABLE' }
+Write-Output ''
 Write-Output "  SYNERGOS Health Check — $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 Write-Output "  Estado: $overall  [$oks OK | $warns WARN | $fails FAIL]"
-Write-Output "═══════════════════════════════════════════════════════════"
 $report | ForEach-Object {
-    $icon = switch ($_.Status) { "OK" { "✓" } "WARN" { "⚠" } "FAIL" { "✗" } }
-    Write-Output "  $icon $($_.Status.PadRight(5)) $($_.Check.PadRight(18)) $($_.Detail)"
+    $icon = switch ($_.Status) { 'OK' { '✓' } 'WARN' { '⚠' } 'FAIL' { '✗' } }
+    Write-Output ("  {0} {1,-5} {2,-22} {3}" -f $icon, $_.Status, $_.Check, $_.Detail)
 }
-Write-Output "═══════════════════════════════════════════════════════════"
 Write-Output "  Backoffice : $base/umbraco/"
-Write-Output "  Swagger    : $base/umbraco/swagger"
-Write-Output "  Registry   : $cdnRoot\registry.json"
-Write-Output "═══════════════════════════════════════════════════════════"
+Write-Output "  Registry   : $regPath"
 ```
 
 ---
@@ -169,9 +129,15 @@ Write-Output "══════════════════════
 
 | Check fallido | Acción inmediata |
 |---------------|-----------------|
-| CMS Ping FAIL | `/synergos-run-dev` |
-| Management API FAIL | CMS corriendo pero credenciales erróneas — revisar appsettings.Development.json |
-| CDN Static FAIL | `/synergos-cdn-build` para el elemento fallido |
-| Bundle Registry FAIL | Crear registry.json mínimo (ver synergos-run-dev §1D) |
-| DB Integrity FAIL | Detener CMS + restore desde backup (`synergos-db-ops` §9) |
-| Último Backup WARN >48h | Hacer backup ahora: `synergos-db-ops` función `Backup-SynergosSqlite` |
+| CMS /_health sin respuesta | `synergos-run-dev` |
+| Una probe en rojo | Su `message` dice qué es; la del bundle registry casi siempre es el CDN sin construir |
+| Bundle Registry FAIL | `npm run build:cdn` en la UI — **no** crear un registry vacío (#126) |
+| CDN Static FAIL | `synergos-cdn-build` |
+| Sitio Público FAIL (200 sin import map) | La portada se ve y no hidrata: `node tools/humo-conectado.mjs` nombra la causa |
+| DB Integrity FAIL | Detener CMS + restore desde backup (`synergos-db-ops`) |
+| Último Backup WARN >48h | `synergos-db-ops`, función `Backup-SynergosSqlite` |
+| Schema (usync-audit) FAIL | El audit lista cada hallazgo con su fichero; arreglar el XML (`synergos-usync-author`) |
+
+> Este semáforo mira un CMS **ya corriendo**. Para probar que un clon limpio da una portada que
+> hidrata, sin depender de nada levantado: `node tools/humo-portada.mjs` y
+> `node tools/humo-conectado.mjs` en el CMS (`synergos-smoke-test`).

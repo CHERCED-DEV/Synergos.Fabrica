@@ -1,12 +1,12 @@
 ---
 name: synergos-app-verify
-description: Verificación END-TO-END en NAVEGADOR de las apps/fichas Angular custom-element (synergos-*) de SynergosLabs — lo que un smoke HTTP no ve. Activar DESPUÉS de synergos-cdn-build / synergos-smoke-test, tras republicar bundles o tocar libs/shared, o cuando el arquitecto reporta "la app no aparece / se ve pobre / rota". Complementa (no duplica) synergos-smoke-test: aquí se fuerza la hidratación real de custom elements montados lazy, se verifica customElements.get, se hace leak-scan del DOM (undefined/NaN/[object), se mide overflow horizontal responsive a 375px, y se recorren los 7 temas por-siteRoot (dark/eventsNight/silverGold/scholar/terraLux/meridian/light) para cazar roturas de contraste que solo aparecen en un tema. Incluye los gotchas reales de las dos herramientas de navegador (embebido vs Chrome-ext) y el recordatorio del ciclo build:runtime+publish:runtime cuando un cambio de libs/shared no se ve.
+description: Verificación END-TO-END en NAVEGADOR de las apps/fichas Angular custom-element (synergos-*) de SynergosLabs — lo que un smoke HTTP no ve. Activar DESPUÉS de synergos-cdn-build / synergos-smoke-test, tras republicar bundles o tocar libs/shared, o cuando el arquitecto reporta "la app no aparece / se ve pobre / rota". Complementa (no duplica) synergos-smoke-test: aquí se fuerza la hidratación real de custom elements montados lazy, se verifica customElements.get, se hace leak-scan del DOM (undefined/NaN/[object), se mide overflow horizontal responsive a 375px, y se recorren todos los temas por-siteRoot (data-theme) para cazar roturas de contraste que solo aparecen en un tema. Incluye los gotchas reales de las dos herramientas de navegador (embebido vs Chrome-ext) y el recordatorio de rehacer el runtime compartido (npm run build:cdn) cuando un cambio de libs/shared no se ve.
 model: claude-opus-4-8
 ---
 
 # SYNERGOS App Verify — verificación viva de apps Angular en el navegador
 
-`synergos-smoke-test` prueba el **transporte** (HTTP 200, Content-Type, Cache-Control, placeholders en el HTML raíz, SEO). Esta skill prueba lo que ese smoke NO puede ver: que el custom element **hidrata de verdad**, que **renderiza data real** (no `undefined`/`NaN`/mock), que **no desborda** en móvil, y que **luce bien en los 7 temas por-siteRoot**. Un `dotnet build` verde y un smoke verde NO garantizan integración viva — el arquitecto ha reportado apps que salían como "grid SSR sin la app" con todo verde.
+`synergos-smoke-test` prueba el **transporte** (HTTP 200, Content-Type, Cache-Control, placeholders en el HTML raíz, SEO). Esta skill prueba lo que ese smoke NO puede ver: que el custom element **hidrata de verdad**, que **renderiza data real** (no `undefined`/`NaN`/mock), que **no desborda** en móvil, y que **luce bien en todos los temas por-siteRoot**. Un `dotnet build` verde y un smoke verde NO garantizan integración viva — el arquitecto ha reportado apps que salían como "grid SSR sin la app" con todo verde.
 
 > Regla de oro: **build verde + smoke verde NO es "hecho".** "Hecho" = verificado en navegador con `customElements.get(tag) === true` y data real a la vista. Ver `feedback_parallel_agents_contract_and_input_race` y `feedback_synhost_mount_hydration_gotchas`.
 
@@ -14,17 +14,19 @@ model: claude-opus-4-8
 
 ## 0. Prerequisitos
 
-- CMS corriendo en `http://synergos.local:5000` (si no, `synergos-run-dev`). Confirmar con el ping del smoke test antes de abrir el navegador.
-- Bundles publicados en `C:\LOCAL_CDN\synergos\` (si no, `synergos-cdn-build`).
+- CMS corriendo en `$base` (`synergos-guardrails/references/entorno.md`; si no, `synergos-run-dev`). Confirmar con `/_health` antes de abrir el navegador.
+- Bundles publicados en `$CDN_ROOT` (si no, `synergos-cdn-build`).
 - Corre el smoke test HTTP primero (`synergos-smoke-test`). Si el smoke ya marca placeholders `<!-- synergos-* placeholder -->` en el HTML raíz, el problema es de emisión (registry/ISynHostEmitter), NO de hidratación — resuélvelo allí antes de seguir aquí.
 
-Rutas y hechos verificados (2026-07-13):
-- Workspace UI: `C:\Users\HITMA\Desktop\synergos\Synergos.UI` (los `npm run` del runtime corren desde aquí).
-- CDN local: `C:\LOCAL_CDN\synergos\` — apps en `<name>/angular/{latest,v0,<ver>}/main.js`; runtime compartido en `runtime/angular/21.1.6/sg-shared.js`.
-- URL servida por el CMS: `http://synergos.local:5000/cdn-bundles/synergos/<name>/angular/latest/main.js`.
+Rutas y hechos (las rutas se resuelven con `synergos-guardrails/references/entorno.md`):
+- El clon de la UI (`$ui`): los `npm run` del CDN y del runtime corren desde ahí.
+- El CDN (`$CDN_ROOT`): apps en `<name>/<framework>/{latest,v<major>,<ver>}/main.js`; el runtime compartido en `runtime/<framework>/<versión de Angular>/sg-shared.js`. La versión no se copia: la dice el import map de la página (§6).
+- URL servida por el CMS: `$base/cdn-bundles/synergos/<name>/angular/latest/main.js`.
 - El emitter (`DefaultSynHostEmitter.BuildScriptTags`) emite `<script src="…/cdn-bundles/…/main.js" type="module" defer></script>` (+ SRI cuando el descriptor lo trae). El runtime `sg-shared.js` llega por import map (`_SynHostRuntime.cshtml`). Por eso, para forzar hidratación, se re-importan los `<script src*="cdn-bundles">` **excluyendo** los de `/runtime/`.
 
-Los 7 temas por-siteRoot (`data-theme`) y su vertical típico:
+Los temas por-siteRoot (`data-theme`) y su vertical típico — la lista viva, con el contraste de cada
+par medido, la da `node tools/audit-themes.mjs --all` en la UI (y cuenta además la ruta de
+`prefers-color-scheme: dark` sin `data-theme`, que se olvida siempre):
 
 | data-theme | Vertical (siteRoot) |
 |------------|---------------------|
@@ -180,24 +182,24 @@ return { overflow, culprits };
 
 Si tocaste `Synergos.UI/platforms/angular/libs/shared/` (un componente compartido, un export nuevo, un mixin) y NO se ve en el navegador, casi seguro falta regenerar el runtime. `@synergos/shared` es **externalizado** (un solo `sg-shared.js` por import map), no bundleado en cada app. Publicar solo los bundles de app deja el runtime STALE y las apps no hidratan (a veces sin error claro; a veces `does not provide an export named 'X'`).
 
-Ciclo correcto, desde `C:\Users\HITMA\Desktop\synergos\Synergos.UI` (ver `synergos-cdn-build` y `feedback_shared_runtime_rebuild_required`):
+Ciclo correcto, desde el clon de la UI (ver `synergos-cdn-build` §4 y `feedback_shared_runtime_rebuild_required`):
 
-```powershell
-Set-Location "C:\Users\HITMA\Desktop\synergos\Synergos.UI"
-npm run build:runtime      # re-bundlea sg-shared.js desde el dist fresco + reescribe import-map (SRI nuevo)
-npm run publish:runtime    # copia el runtime al CDN
-# (o, para todo consistente de una: npm run release:angular)
+```bash
+cd "$ui"            # synergos-guardrails/references/entorno.md
+npm run build:cdn    # compila, rehace los runtimes (sg-shared.js + import-map con SRI nuevo) y publica en public/
 ```
+Con `npm run dev:cdn`, el watch rehace el runtime solo al tocar `libs/`.
 Luego **hard reload Ctrl+Shift+R** en el navegador (la URL del runtime es immutable/`max-age=31536000`; F5 normal sirve el cache viejo).
 
 Verificación:
 ```powershell
-# El símbolo nuevo debe estar en el runtime publicado:
-Select-String -Path "C:\LOCAL_CDN\synergos\runtime\angular\21.1.6\sg-shared.js" -Pattern "NuevoSymbol" -SimpleMatch
+# El símbolo nuevo debe estar en el runtime publicado ($cdnRoot: entorno.md):
+Select-String -Path (Join-Path $cdnRoot "runtime\angular\*\sg-shared.js") -Pattern "NuevoSymbol" -SimpleMatch
 ```
 ```js
-// ¿El navegador sirve cache viejo o fresco? Si difieren en longitud, es cache stale, no bug:
-const u = '/cdn-bundles/synergos/runtime/angular/21.1.6/sg-shared.js';
+// ¿El navegador sirve cache viejo o fresco? Si difieren en longitud, es cache stale, no bug.
+// La URL del runtime la dice el import map de la propia página — no se escribe a mano:
+const u = JSON.parse(document.querySelector('script[type="importmap"]').textContent).imports['@synergos/shared'];
 const [cached, fresh] = await Promise.all([
   fetch(u).then(r => r.text()),
   fetch(u, { cache: 'reload' }).then(r => r.text())
@@ -205,11 +207,11 @@ const [cached, fresh] = await Promise.all([
 return { cachedLen: cached.length, freshLen: fresh.length, stale: cached.length !== fresh.length };
 ```
 
-> Lección operativa (re-caída 2026-07-13): SIEMPRE cierra un lote de republish de apps con `build:runtime` + `publish:runtime` (o `release:angular`). `publish:element` de las apps NO basta.
+> Lección operativa (re-caída 2026-07-13): SIEMPRE cierra un lote de republish de apps rehaciendo el runtime — `npm run build:cdn` lo hace siempre. Publicar sólo las apps NO basta.
 
 ---
 
-## 7. Verificar en los 7 temas por-siteRoot
+## 7. Verificar en todos los temas por-siteRoot
 
 Un token de tema puede romper contraste en UN solo tema. Caso real: `--syn-color-text-on-accent` quedaba oscuro en `dark`/`eventsNight` → texto ilegible sobre las bandas brand/accent en Tienda y Eventos, mientras en los demás temas estaba bien (ver `feedback_verify_all_siteroot_themes`). Recorre cada vertical (cada uno trae su `data-theme`) y comprueba contraste:
 
@@ -248,11 +250,11 @@ return { theme, lowContrast };
 | Confiar en `dotnet build` verde o smoke verde como "integración OK" | Abrir el navegador y confirmar `customElements.get(tag)===true` + data real |
 | Asumir que el elemento hidrató porque el tag está en el DOM | `customElements.get(tag)` — el tag presente con `defined:false` = NO hidrató |
 | Dar por muerta una app que está fuera del viewport | Forzar `import(url + '?m='+Date.now())` (§2) — monta lazy |
-| Verificar solo vía Management API / HTTP | Eso es `synergos-smoke-test`; esta skill es el DOM vivo del navegador |
+| Verificar solo por HTTP | Eso es `synergos-smoke-test`; esta skill es el DOM vivo del navegador |
 | Pedir screenshot al navegador embebido | Embebido = JS/DOM/resize; screenshots con la Chrome-ext (y reintenta 1 vez si CDP timeout) |
-| Publicar solo `publish:element` tras tocar `libs/shared` | Cerrar con `build:runtime`+`publish:runtime` (o `release:angular`) + Ctrl+Shift+R (§6) |
+| Publicar solo las apps tras tocar `libs/shared` | Rehacer el runtime (`npm run build:cdn`) + Ctrl+Shift+R (§6) |
 | F5 normal esperando ver el runtime nuevo | Hard reload Ctrl+Shift+R (runtime es immutable/versionado) |
-| Verificar el look solo en `light` | Recorrer los 7 temas por-siteRoot (§7) |
+| Verificar el look solo en `light` | Recorrer todos los temas por-siteRoot (§7) |
 | Parchear un overflow con CSS ad-hoc | Componer/tokenizar el fix (Layout Composer + tokens `--syn-*`) |
 | Tratar `mockBanner` como cosmético | Es contrato JSON o input-race: la app degradó a mock pese a 200 (§4) |
 
@@ -268,13 +270,13 @@ Por cada app/vertical verificada, reportar:
 - Temas recorridos y hallazgos de contraste (`ratio<3`).
 - Si aplicó el ciclo runtime: confirmación `stale:false`.
 
-Veredicto PASS solo si: todos los tags `defined:true`, cero leaks, sin `mockBanner`, `overflow<=2` en móvil, y sin baja de contraste en ninguno de los 7 temas.
+Veredicto PASS solo si: todos los tags `defined:true`, cero leaks, sin `mockBanner`, `overflow<=2` en móvil, y sin baja de contraste en ninguno de los temas.
 
 ---
 
 ## Relacionadas
 
 - `synergos-smoke-test` — capa HTTP/placeholder (correr ANTES).
-- `synergos-cdn-build` — compilar y publicar bundles + runtime a LOCAL_CDN.
+- `synergos-cdn-build` — compilar y publicar bundles + runtime al CDN.
 - `synergos-run-dev` / `synergos-health-check` — levantar y semaforear el stack.
 - Memorias: `feedback_shared_runtime_rebuild_required`, `feedback_synhost_mount_hydration_gotchas`, `feedback_verify_all_siteroot_themes`, `feedback_parallel_agents_contract_and_input_race`, `feedback_prefer_cdn_angular_components`. ADRs: 0012 (CDN consumido), 0015 (framework-agnóstico), 0099 (registry+SRI+import map).

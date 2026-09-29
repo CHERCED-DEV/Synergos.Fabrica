@@ -1,6 +1,6 @@
 ---
 name: synergos-usync-import
-description: Guía el flujo completo de uSync Import después de que el agente escribió nuevos XMLs de schema (ContentTypes, DataTypes, Templates, Dictionary). Pre-valida XMLs, hace backup SQLite, da instrucciones neutrales de backoffice para el Import, lista los logs que confirman éxito, verifica post-import vía Management API, y diagnostica errores comunes. Usar siempre después de synergos-cms-author cuando creó schema nuevo.
+description: Guía el flujo completo de uSync Import después de que el agente escribió nuevos XMLs de schema (ContentTypes, DataTypes, Templates, Dictionary). Pre-valida XMLs, hace backup SQLite, da instrucciones neutrales de backoffice para el Import, lista los logs que confirman éxito, verifica post-import con node tools/usync-audit.mjs y los aliases del XML contra la base (sólo lectura), y diagnostica errores comunes. Usar siempre después de synergos-cms-author cuando creó schema nuevo.
 model: claude-opus-4-8
 ---
 
@@ -21,7 +21,7 @@ Siempre que `synergos-cms-author` (u otro proceso) haya escrito archivos nuevos 
 - `Synergos.CMS.Web/uSync/v9/Dictionary/`
 - `Synergos.CMS.Web/uSync/v9/MediaTypes/`
 
-Si solo se creó **Content** (nodos editoriales), NO se necesita Import — el contenido ya está en el DB vía Management API.
+Si solo se creó **Content** (nodos editoriales), NO se necesita Import: el contenido lo escribe en la DB el motor server-side (`IContentService` detrás del flag DevSeed → `synergos-content-fill`).
 
 ---
 
@@ -30,11 +30,13 @@ Si solo se creó **Content** (nodos editoriales), NO se necesita Import — el c
 Antes de cualquier Import, hacer backup del DB. Un Import que falla a mitad puede dejar el schema inconsistente.
 
 ```powershell
-$dbPath     = "Synergos.CMS\Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
-$backupDir  = "C:\Users\HITMA\Desktop\synergos-backups"
+# $cms, $backups: synergos-guardrails/references/entorno.md
+$dbPath     = Join-Path $cms "Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
+$backupDir  = $backups   # $SYNERGOS_BACKUP_DIR — FUERA del repo
 $timestamp  = Get-Date -Format "yyyyMMdd-HHmmss"
-$backupPath = "$backupDir\Umbraco-pre-import-$timestamp.sqlite.db"
+$backupPath = Join-Path $backupDir "Umbraco-pre-import-$timestamp.sqlite.db"
 
+if (-not $backupDir) { Write-Error "Definí SYNERGOS_BACKUP_DIR (fuera del repo) antes de importar."; exit 1 }
 if (-not (Test-Path $backupDir)) { New-Item -ItemType Directory $backupDir | Out-Null }
 
 if (Test-Path $dbPath) {
@@ -47,7 +49,9 @@ if (Test-Path $dbPath) {
 }
 ```
 
-**Nota:** Los backups van en `C:\Users\HITMA\Desktop\synergos-backups\` — NUNCA dentro del repo. La DB no se commitea.
+**Nota:** Los backups van en `$SYNERGOS_BACKUP_DIR` — NUNCA dentro del repo. La DB no se commitea. Con el
+CMS corriendo, la copia puede salir a medio escribir: el protocolo completo (parar → checkpoint del
+WAL → copiar) es `synergos-db-ops`.
 
 ---
 
@@ -56,7 +60,7 @@ if (Test-Path $dbPath) {
 Antes del Import, verificar que los archivos escritos son válidos:
 
 ```powershell
-$uSyncRoot = "Synergos.CMS\Synergos.CMS.Web\uSync\v9"
+$uSyncRoot = Join-Path $cms "Synergos.CMS.Web\uSync\v9"
 
 # 2A. Identificar archivos modificados recientemente (último commit o últimas 2 horas)
 $recentFiles = Get-ChildItem $uSyncRoot -Recurse -Filter "*.config" |
@@ -114,7 +118,7 @@ Write-Output "GUID scan completado — $($allGuids.Count) GUIDs únicos en todo 
 # Verificar específicamente los Keys de los nuevos archivos
 foreach ($file in $recentFiles) {
     [xml]$xml  = Get-Content $file.FullName -Encoding UTF8
-    $keyAttr   = $xml.DocumentElement.Attributes["Key"]?.Value
+    $keyAttr   = $xml.DocumentElement.GetAttribute("Key")
     if ($keyAttr) {
         $dup = Get-ChildItem $uSyncRoot -Recurse -Filter "*.config" |
             Where-Object { $_.FullName -ne $file.FullName } |
@@ -166,25 +170,24 @@ Write-Output "══════════════════════
 $recentFiles | ForEach-Object {
     [xml]$xml  = Get-Content $_.FullName -Encoding UTF8
     $root      = $xml.DocumentElement.LocalName
-    $key       = $xml.DocumentElement.Attributes["Key"]?.Value
-    $alias     = $xml.DocumentElement.Attributes["Alias"]?.Value
-    $name      = $xml.DocumentElement.Info?.Name
+    $key       = $xml.DocumentElement.GetAttribute("Key")
+    $alias     = $xml.DocumentElement.GetAttribute("Alias")
 
     switch ($root) {
         "ContentType" {
             $isElem = $xml.ContentType.Info.IsElement -eq "true"
             $type   = if ($isElem) { "ElementType" } else { "DocumentType" }
-            Write-Output "  + $type: $alias  (Key: $key)"
+            Write-Output "  + $($type): $alias  (Key: $key)"
         }
         "DataType" {
-            $editor = $xml.DocumentElement.Attributes["EditorAlias"]?.Value
+            $editor = $xml.DocumentElement.GetAttribute("EditorAlias")
             Write-Output "  + DataType: $alias [$editor]  (Key: $key)"
         }
         "Template" {
             Write-Output "  + Template: $alias  (Key: $key)"
         }
         default {
-            Write-Output "  + $root: $alias  (Key: $key)"
+            Write-Output "  + $($root): $alias  (Key: $key)"
         }
     }
 }
@@ -200,8 +203,9 @@ El arquitecto ejecuta el Import desde el backoffice o desde CLI. Las instruccion
 ### Vía backoffice (recomendado)
 
 ```
-1. Abrir http://synergos.local:5000/umbraco/
-   Usuario: admin@synergos.local  |  Password: REDACTADO-150
+1. Abrir <la URL del CMS>/umbraco/   ($base, synergos-guardrails/references/entorno.md)
+   Usuario: el UnattendedUserEmail de appsettings.Development.json
+   Contraseña: la de Umbraco__CMS__Unattended__UnattendedUserPassword (no está en el árbol, #150)
 
 2. Navegar a la sección de configuración de uSync.
    En Umbraco 13, está en el árbol de Settings bajo "uSync" o accesible
@@ -220,15 +224,17 @@ El arquitecto ejecuta el Import desde el backoffice o desde CLI. Las instruccion
    dependiendo de cuántos tipos cambien.
 ```
 
-### Vía `dotnet umbraco-usync` CLI (alternativa)
+### En un servidor sin pantalla
 
-Si el `USync.Community.AutoImport` o similar está instalado, puede haber un comando CLI. Verificar con:
+El import de un servidor NUEVO es `tools/importar-schema.sh` del CMS, y se corre **en el servidor**,
+con el stack levantado: para el CMS, importa con un contenedor efímero y lo vuelve a arrancar (su
+cabecera explica por qué no es una línea del compose ni se hace con el CMS arriba).
 
 ```bash
-dotnet run -- usync import --all
+bash tools/importar-schema.sh      # en el servidor, desde el clon del CMS
 ```
 
-Pero en la configuración actual del proyecto, el Import vía backoffice es el método canónico.
+En desarrollo, el Import vía backoffice es el método canónico (ADR 0008: nada importa al arrancar).
 
 ---
 
@@ -277,52 +283,45 @@ error: uSync.Core[0]
 
 ---
 
-## 6. Verificación post-import vía Management API
+## 6. Verificación post-import — el XML es la fuente, y la base se LEE
 
-Después de que el arquitecto confirme que el Import completó:
+Umbraco 13 no tiene una API que liste los tipos (ADR 0093), y no hace falta: el XML es la fuente
+(ADR 0008), y lo que el import tenía que crear se lee de ahí. Después de que el arquitecto confirme
+que el Import completó:
 
 ```powershell
-$baseUrl = "http://synergos.local:5000"
+# 6A. El schema del disco está sano — 0 hallazgos (GUIDs, compositions, Definition, iconos, Dictionary)
+Push-Location $cms
+node tools/usync-audit.mjs
+$auditOk = ($LASTEXITCODE -eq 0)
+Pop-Location
 
-# Auth
-$auth    = Invoke-RestMethod "$baseUrl/umbraco/management/api/v1/security/back-office/token" `
-    -Method POST -ContentType "application/x-www-form-urlencoded" `
-    -Body "grant_type=password&client_id=umbraco-back-office&username=admin%40synergos.local&password=REDACTADO-150"
-$headers = @{ "Authorization" = "Bearer $($auth.access_token)" }
-
-# Verificar cada tipo importado
-$importedAliases = $recentFiles | ForEach-Object {
+# 6B. Lo que el import TENÍA que crear, leído del XML
+$esperados = $recentFiles | ForEach-Object {
     [xml]$xml = Get-Content $_.FullName -Encoding UTF8
-    $xml.DocumentElement.Attributes["Alias"]?.Value
-} | Where-Object { $_ }
+    [PSCustomObject]@{ Raiz = $xml.DocumentElement.LocalName; Alias = $xml.DocumentElement.GetAttribute("Alias") }
+} | Where-Object { $_.Alias }
 
-Write-Output "Verificando tipos importados vía API..."
-
-foreach ($alias in $importedAliases) {
-    try {
-        # GET document-type por alias
-        $types = Invoke-RestMethod "$baseUrl/umbraco/management/api/v1/document-type?skip=0&take=200" `
-            -Headers $headers
-        $found = $types.items | Where-Object { $_.alias -eq $alias } | Select-Object -First 1
-
-        if ($found) {
-            Write-Output "  ✓ $alias — Key: $($found.id)"
-        } else {
-            # Intentar como data-type
-            $dtypes = Invoke-RestMethod "$baseUrl/umbraco/management/api/v1/data-type?skip=0&take=200" `
-                -Headers $headers
-            $dtFound = $dtypes.items | Where-Object { $_.alias -eq $alias } | Select-Object -First 1
-
-            if ($dtFound) {
-                Write-Output "  ✓ $alias (DataType) — Key: $($dtFound.id)"
-            } else {
-                Write-Warning "  ✗ $alias — NO encontrado en la API. El Import puede no haber aplicado."
-            }
-        }
-    } catch {
-        Write-Warning "  ? $alias — Error al verificar: $($_.Exception.Message)"
+# 6C. Y si está en la base — SÓLO LECTURA (el protocolo de escritura es synergos-db-ops)
+if (Get-Command sqlite3 -ErrorAction SilentlyContinue) {
+    $tipos = & sqlite3 -readonly $dbPath "SELECT alias FROM cmsContentType;"
+    $dts   = & sqlite3 -readonly $dbPath "SELECT text FROM umbracoNode WHERE nodeObjectType = '30A2A501-1978-4DDB-A57B-F7EFED43BA3C';"
+    foreach ($e in $esperados) {
+        $enBase = if ($e.Raiz -eq 'DataType') { $dts -contains $e.Alias } else { $tipos -contains $e.Alias }
+        if ($enBase) { Write-Output "  ✓ $($e.Raiz) $($e.Alias) — en la base" }
+        else         { Write-Warning "  ✗ $($e.Raiz) $($e.Alias) — NO está en la base: el Import no lo aplicó" }
     }
+} else {
+    Write-Warning "sqlite3 no está en el PATH: la comprobación contra la base queda en la línea del log (§5)."
 }
+```
+
+Y la prueba de que **el repo** reproduce el entorno —base vacía + XML = import limpio y completo, sin
+tocar la tuya— es el gate de reconstrucción del CMS:
+
+```bash
+cd "$cms"
+node tools/usync-rebuild-check.mjs
 ```
 
 ---
@@ -425,13 +424,14 @@ Si no regenera automáticamente, hacer un touch a cualquier archivo de configura
 ════════════════════════════════════════════════════
   SYNERGOS uSync Import — Completado
 ════════════════════════════════════════════════════
-  Backup:     C:\...\synergos-backups\Umbraco-pre-import-{timestamp}.sqlite.db
+  Backup:     $SYNERGOS_BACKUP_DIR/Umbraco-pre-import-{timestamp}.sqlite.db
   XMLs validados: {N} archivos OK
   GUIDs verificados: 0 colisiones
   Import ejecutado: ✓ (por el arquitecto desde backoffice)
-  Verificación API:
-    ✓ elementSyn{Name} — encontrado, Key: {guid}
-    ✓ DTSelect{Name}   — encontrado, Key: {guid}
+  usync-audit: 0 hallazgos
+  En la base (sólo lectura):
+    ✓ ContentType elementSyn{Name}
+    ✓ DataType    DTSelect{Name}
 
   Siguiente paso:
     → Si es elementSyn*: crear Razor views (§5 de synergos-cms-author)
@@ -449,9 +449,9 @@ Si el Import dejó el schema inconsistente y el CMS no arranca correctamente:
 ```powershell
 # 1. Detener el CMS
 # 2. Restaurar el backup
-$latestBackup = Get-ChildItem "C:\Users\HITMA\Desktop\synergos-backups" "*.sqlite.db" |
+$latestBackup = Get-ChildItem $backups "*.sqlite.db" |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
-$dbPath = "Synergos.CMS\Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
+$dbPath = Join-Path $cms "Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
 
 Copy-Item $latestBackup.FullName $dbPath -Force
 Write-Output "DB restaurada desde: $($latestBackup.FullName)"

@@ -1,6 +1,6 @@
 ---
 name: synergos-smoke-test
-description: Prueba de humo post-deploy de Synergos — verifica que el sitio público renderiza, los custom elements hidratan correctamente (no quedan como HTML comments), los CDN bundles cargan con Content-Type y Cache-Control correctos, el SEO metadata está presente, y la API de Management responde. Ejecutar después de synergos-cdn-build o cualquier cambio de infraestructura.
+description: Prueba de humo de Synergos — primero las herramientas del CMS que piden la página desde un clon limpio (humo-portada, humo-conectado: portada servida, import map, un script por tag, bundles 200), y después el HTML de un CMS corriendo (sin placeholders, SEO, bundles con Content-Type y Cache-Control correctos, scripts sin 404). Ejecutar después de synergos-cdn-build o cualquier cambio de infraestructura.
 model: claude-opus-4-8
 ---
 
@@ -10,32 +10,40 @@ Smoke test enfocado en comportamiento observable de extremo a extremo — no en 
 
 ---
 
-## 0. Prerequisitos
+## 0. Primero: pedir la página desde un clon limpio
 
-El CMS debe estar corriendo (`synergos-run-dev`). Si no está corriendo, esta skill no puede ejecutarse.
+La propiedad que de verdad importa es que **el navegador reciba una página que hidrata**, y eso lo
+comprueban dos herramientas del CMS que levantan su **propio** CMS sobre una base temporal: no
+necesitan nada corriendo y no tocan tu base.
+
+```bash
+cd "$cms"                        # synergos-guardrails/references/entorno.md
+node tools/humo-portada.mjs      # base vacía + XML + siembra → la portada se SIRVE (200, no el cartel vacío)
+node tools/humo-conectado.mjs    # …y está CONECTADA al CDN (necesita la UI construida: npm run build:cdn)
+```
+
+`humo-conectado` falla nombrando la causa: sin `<script type="importmap">`, un framework del registry
+sin entradas en el mapa, un `<synergos-*>` sin su `<script type="module">`, o un bundle que no
+contesta 200. Es el defecto #126 —200, el SSR entero y nada interactivo— y lo que un `curl` a la
+portada no ve.
+
+Lo que sigue mira el HTML de **un CMS ya corriendo** (`synergos-run-dev`):
 
 ```powershell
-$base = "http://synergos.local:5000"
+# $base, $cdnRoot: synergos-guardrails/references/entorno.md
 try {
-    Invoke-WebRequest "$base/umbraco/api/keepalive/ping" -UseBasicParsing -TimeoutSec 5 | Out-Null
-    Write-Output "CMS OK — iniciando smoke test"
+    Invoke-WebRequest "$base/_health" -UseBasicParsing -TimeoutSec 5 | Out-Null
 } catch {
-    Write-Error "CMS no responde. Ejecutar synergos-run-dev primero."
-    exit 1
+    if (-not $_.Exception.Response) { Write-Error "El CMS no contesta en $base. synergos-run-dev primero."; exit 1 }
 }
 ```
 
 ---
 
-## 1. Autenticación Management API
+## 1. (retirado) Autenticación
 
-```powershell
-$auth = Invoke-RestMethod "$base/umbraco/management/api/v1/security/back-office/token" `
-    -Method POST -ContentType "application/x-www-form-urlencoded" `
-    -Body "grant_type=password&client_id=umbraco-back-office&username=admin%40synergos.local&password=REDACTADO-150"
-$token   = $auth.access_token
-$headers = @{ "Authorization" = "Bearer $token" }
-```
+No hay token que pedir: Umbraco 13 no tiene Management API (ADR 0093). Todo lo de abajo es HTML
+público y el disco.
 
 ---
 
@@ -135,14 +143,14 @@ if ($html) {
 
 ```powershell
 try {
-    $reg = Get-Content "C:\LOCAL_CDN\synergos\registry.json" | ConvertFrom-Json
+    $reg = Get-Content (Join-Path $cdnRoot 'registry.json') -Raw | ConvertFrom-Json
 } catch {
     $issues.Add("registry.json no legible — CDN smoke test saltado")
     $reg = $null
 }
 
 if ($reg) {
-    foreach ($el in @($reg.elements)) {
+    foreach ($el in @($reg.elements | Where-Object { $_.implementations.angular })) {
         $latestVer = $el.implementations.angular.latest
         $latestUrl = "$base/cdn-bundles/synergos/$($el.name)/angular/latest/main.js"
         $versionUrl = "$base/cdn-bundles/synergos/$($el.name)/angular/$latestVer/main.js"
@@ -186,37 +194,30 @@ if ($reg) {
 
 ## 5. Verificar hidratación de custom elements (page-level)
 
-Si hay content publicado, verificar que los elementos hidratan y no quedan como comentarios:
+Las páginas se piden por su URL pública, no se listan por una API: el sitemap del sitio, la
+navegación de la portada o las rutas que el arquitecto nombre. Por cada una, que ningún
+`<synergos-*>` quede como comentario y que la página traiga su import map:
 
 ```powershell
-# Obtener la lista de páginas publicadas vía API
-try {
-    $pages = Invoke-RestMethod "$base/umbraco/management/api/v1/document?skip=0&take=10" `
-        -Headers $headers
-    $publishedPages = @($pages.items) | Where-Object { $_.variants[0].state -eq "Published" }
-    Write-Output "Páginas publicadas: $($publishedPages.Count)"
-
-    # Verificar la primera página publicada
-    if ($publishedPages.Count -gt 0) {
-        $firstPage = $publishedPages[0]
-        # El URL del sitio se construye a partir del slug
-        $pageUrl = "$base/"  # ajustar según la estructura del sitio
-        try {
-            $pageHtml = (Invoke-WebRequest $pageUrl -UseBasicParsing -TimeoutSec 10).Content
-            $phpCount = ([regex]::Matches($pageHtml, '<!--\s*synergos-')).Count
-            if ($phpCount -gt 0) {
-                $issues.Add("HIDRATACIÓN: $phpCount placeholder(s) en $pageUrl — ISynHostEmitter no resolvió bundles")
-            } else {
-                Write-Output "✓ Hidratación OK en $pageUrl — sin placeholders"
-            }
-        } catch {
-            Write-Output "  WARN no se pudo verificar la URL del sitio"
+$paginas = @("$base/")   # + las URLs que interesen: se piden, no se listan por API
+foreach ($pageUrl in $paginas) {
+    try {
+        $pageHtml = (Invoke-WebRequest $pageUrl -UseBasicParsing -TimeoutSec 10).Content
+        $phpCount = ([regex]::Matches($pageHtml, '<!--\s*synergos-')).Count
+        if ($phpCount -gt 0) {
+            $issues.Add("HIDRATACIÓN: $phpCount placeholder(s) en $pageUrl — ISynHostEmitter no resolvió bundles")
+        } elseif ($pageHtml -notmatch '<script type="importmap"') {
+            $issues.Add("HIDRATACIÓN: $pageUrl sin import map — 200 con SSR y nada interactivo (#126)")
+        } else {
+            Write-Output "✓ $pageUrl — sin placeholders y con import map"
         }
+    } catch {
+        Write-Output "  WARN no se pudo pedir $pageUrl"
     }
-} catch {
-    Write-Output "  WARN no se pudieron obtener páginas publicadas vía API"
 }
 ```
+
+La prueba completa de esto —un script por tag, cada bundle en 200— es `humo-conectado` (§0).
 
 ---
 
@@ -287,7 +288,7 @@ Write-Output "══════════════════════
 | Content-Type `text/plain` en bundles | Static files middleware no configurado para `.js` | Revisar `Program.cs` — verificar `UseStaticFiles()` con FileExtensionContentTypeProvider |
 | Cache-Control `immutable` en `/latest/` | Bug en el middleware de static files | Verificar la config de `OnPrepareResponse` en el hosting del CDN local |
 | `<title>` genérico o vacío | compSeo no está en la composition del DocType | Agregar compSeo como composition en el PageType correspondiente |
-| Script 404 | Bundle referenciado en HTML pero no publicado en LOCAL_CDN | Ejecutar synergos-cdn-build para el elemento faltante |
+| Script 404 | Bundle referenciado en HTML pero no publicado en el CDN | Ejecutar synergos-cdn-build para el elemento faltante |
 | HTTP 500 en sitio | Excepción en Razor (modelo nulo, alias mal escrito) | Revisar logs de dotnet run; buscar `throw` / `NullReferenceException` |
 
 ---
@@ -301,6 +302,6 @@ Para la verificación **a nivel navegador / DOM** usar la skill **`synergos-app-
 - **Hidratación real** vía `customElements.get('<tag>')` + import forzado del bundle — confirma que el elemento definió su clase, no solo que el tag existe en el HTML.
 - **Leak-scan del DOM renderizado** — busca `undefined` / `NaN` / `[object Object]` / claves crudas filtradas en el texto ya hidratado (bugs de shape backend↔UI que el HTML de servidor no muestra).
 - **Responsive a 375px** — layout móvil real, no solo markup.
-- **7 temas por-siteRoot** (dark / eventsNight / silverGold / scholar / terraLux / meridian / light) — contraste y tokens de tema que solo se rompen en el navegador con el CSS aplicado.
+- **Todos los temas por-siteRoot** — contraste y tokens de tema que solo se rompen en el navegador con el CSS aplicado (`node tools/audit-themes.mjs` en la UI los enumera y los mide).
 
 **Regla práctica:** correr `synergos-smoke-test` primero (rápido, HTTP, atrapa infra/placeholder/CDN/SEO); si pasa y el cambio toca UI hidratada o temas, correr `synergos-app-verify` para confirmar el comportamiento real en el DOM. Un PASS aquí **no** garantiza hidratación ni congruencia visual — para eso está `synergos-app-verify`.

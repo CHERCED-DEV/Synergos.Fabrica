@@ -1,15 +1,21 @@
 ---
 name: synergos-media-upload
-description: Genera una imagen PNG y la sube a la biblioteca de medios de Umbraco CMS vía Management API. Usar cuando se necesita crear una imagen (hero, og:image, thumbnail, avatar, logo placeholder) y registrarla en Umbraco para que esté disponible en MediaPicker3. Retorna el mediaKey GUID y el UDI. Requiere que el CMS esté corriendo en http://synergos.local:5000.
+description: Genera una imagen PNG (o SVG) y la registra en la biblioteca de medios de Umbraco 13 por las vías que existen — el seam server-side DevMediaFactory (IMediaService detrás del flag DevSeed) o el backoffice. Usar cuando se necesita una imagen (hero, og:image, thumbnail, avatar, logo placeholder) disponible en un campo MediaPicker3. Devuelve el valor MediaPicker3 (mediaKey + UDI). Requiere el CMS corriendo (SYNERGOS_CMS_URL).
 model: claude-opus-4-8
 ---
 
-# SYNERGOS Media Upload — generación y upload de imágenes a Umbraco
+# SYNERGOS Media Upload — generar una imagen y registrarla en Umbraco
 
-Esta skill crea una imagen PNG desde cero usando PowerShell + GDI+ y la registra en la biblioteca de medios de Umbraco 13 vía Management API. Al finalizar retorna el `mediaKey` (GUID) y el UDI `umb://media/{key}` listos para usar en cualquier campo `MediaPicker3` o `ImageCropper`.
+Esta skill crea una imagen desde cero (PowerShell + GDI+, o SVG) y la deja en la biblioteca de medios
+de Umbraco 13, lista para un campo `MediaPicker3` o `ImageCropper`.
 
-> ## ⚠️ AVISO (ADR 0093) — El upload vía Management API NO funciona en Umbraco 13
-> Umbraco 13 **no tiene Management API** (`/umbraco/management/api/v1/media` → 404; el paquete `Umbraco.Cms.Api.Management` empieza en v14). El flujo de upload de las §3-§5 (token + multipart a `/v1/media`) **no funciona en este stack**. La generación de la imagen PNG (GDI+) sigue siendo útil; pero el registro en Umbraco debe hacerse **server-side con `IMediaService`** (crear nodo Media, set `umbracoFile` + `altDefault`, `Save`, devolver el JSON del MediaPicker3). Ese seam **aún no existe** — es el incremento pendiente del path de autoría (ver `synergos-content-fill` + ADR 0093). Hasta entonces, subir media manualmente por el backoffice clásico (`/umbraco` → Media).
+> **Cómo se registra un media en Umbraco 13** (ADR 0093): **server-side**, con `IMediaService`, detrás
+> del flag `Synergos:DevSeed:Enabled`. El seam existe: `Synergos.CMS.Web/Services/DevMediaFactory.cs`
+> (crea el nodo `synImage`, escribe el fichero, rellena el cropper y devuelve el JSON del
+> MediaPicker3; idempotente por nombre, en carpetas). La otra vía es el backoffice. Un upload por HTTP
+> con token no existe en 13: esa API empieza en v14.
+
+`$base` y `$cms` salen de `synergos-guardrails/references/entorno.md`.
 
 ## 0. Parámetros de entrada
 
@@ -23,25 +29,19 @@ Cuando se activa esta skill, extrae o infiere del mensaje del usuario:
 | `$height` | Alto en píxeles | 630 |
 | `$bgColorHex` | Color de fondo en hex | `#0F58A7` |
 | `$altText` | Alt text para accesibilidad | Igual que `$title` |
-| `$folderPath` | Ruta de carpeta en Media Library | Raíz |
+| `$folderPath` | Carpeta en Media Library | la que corresponda por uso (ver §3A) |
 | `$fileName` | Nombre del archivo (sin extensión) | slug del título |
 
-## 1. Pre-flight — verificar que el CMS está corriendo
-
-Antes de cualquier llamada API, verifica que Umbraco responde:
+## 1. Pre-flight — el CMS contesta y el flag DevSeed está encendido
 
 ```powershell
-try {
-    $ping = Invoke-WebRequest -Uri "http://synergos.local:5000/umbraco/api/keepalive/ping" `
-        -Method GET -UseBasicParsing -TimeoutSec 5
-    Write-Output "CMS OK — status $($ping.StatusCode)"
-} catch {
-    Write-Error "CMS no responde en http://synergos.local:5000. Arrancar la app primero con 'dotnet run' desde Synergos.CMS.Web."
-    exit 1
-}
-```
+# $base: synergos-guardrails/references/entorno.md
+try { Invoke-WebRequest "$base/_health" -UseBasicParsing -TimeoutSec 5 | Out-Null }
+catch { if (-not $_.Exception.Response) { Write-Error "El CMS no contesta en $base — synergos-run-dev."; exit 1 } }
 
-Si el CMS no responde: detener y avisar al usuario que debe arrancar el server. No continuar.
+$ping = try { Invoke-RestMethod "$base/dev/ping" } catch { $null }   # con el flag apagado, /dev/* da 404
+if (-not $ping.devSeedEnabled) { Write-Warning 'Synergos:DevSeed:Enabled apagado: sólo queda la vía del backoffice (§3B).' }
+```
 
 ## 2. Generación de la imagen PNG
 
@@ -136,110 +136,39 @@ $tmpPath = [System.IO.Path]::Combine($env:TEMP, "syn-$slug.svg")
 [System.IO.File]::WriteAllText($tmpPath, $svgContent, [System.Text.Encoding]::UTF8)
 ```
 
-## 3. Autenticación con Umbraco Management API
+## 3. Registrar la imagen en Umbraco
 
-```powershell
-$baseUrl  = "http://synergos.local:5000"
-$authUri  = "$baseUrl/umbraco/management/api/v1/security/back-office/token"
+### 3A. Server-side — `DevMediaFactory` (la vía programática)
 
-$authBody = "grant_type=password&client_id=umbraco-back-office" +
-            "&username=admin%40synergos.local&password=REDACTADO-150"
+`DevMediaFactory` (`Synergos.CMS.Web/Services/DevMediaFactory.cs`) es el seam de media de la autoría
+server-side. Lo que ofrece hoy, leído del fichero (si cambió, manda el fichero):
 
-try {
-    $authResp = Invoke-RestMethod -Uri $authUri -Method POST `
-        -ContentType "application/x-www-form-urlencoded" `
-        -Body $authBody
-    $token = $authResp.access_token
-    Write-Output "Auth OK — token expira en $($authResp.expires_in)s"
-} catch {
-    Write-Error "Auth fallida: $($_.Exception.Message). Verificar que el CMS está corriendo y las credenciales en appsettings.Development.json."
-    exit 1
-}
+| Método | Devuelve |
+|--------|----------|
+| `GetOrCreatePickerValue(name, altText, …)` | el JSON del MediaPicker3 de una imagen `synImage` con ese nombre; la crea si no existe |
+| `GetOrCreateOgImagePickerValue(name, altText)` | la OG image de marca, en la carpeta de marca |
+| `GetOrCreateMediaUrl(name, altText, …)` | la URL pública del fichero (para configs de elementos CDN que llevan URLs planas) |
+| `GetOrCreateFolder(folderName)` | el Id de una carpeta de Media bajo la raíz; nada queda en la raíz |
 
-$headers = @{
-    "Authorization" = "Bearer $token"
-    "Accept"        = "application/json"
-}
+Se invoca desde el tooling `/dev/*` (el filler o un seeder), nunca en el arranque (ADR 0013): la
+forma de agregar una autoría nueva está en `synergos-content-fill` §2.
+
+> **Ojo con lo que genera.** `DevMediaFactory` no sube un fichero cualquiera: importa una
+> ilustración del brand kit si el nombre está mapeado, o genera un gradiente de marca **sin texto**.
+> Si hace falta registrar la imagen que generó el §2 de esta skill, el seam no lo hace hoy: o se le
+> agrega un método que reciba el fichero (C#, detrás del flag, con sus tests — ADR 0075 y
+> `synergos-test-author`), o se usa el backoffice (§3B).
+
+### 3B. Backoffice
+
+```
+1. Abrir $base/umbraco → sección Media.
+2. Elegir (o crear) la carpeta que corresponda; no dejar la imagen en la raíz.
+3. Subir el fichero generado en el §2 como "Image" (synImage) y completar el texto alternativo.
+4. Guardar. En la pestaña Info del nodo está su Key (GUID): es el mediaKey.
 ```
 
-## 4. Crear nodo media en Umbraco
-
-El MediaType canónico para imágenes es `synImage` con Key `bcc6d08c-509e-4ab6-8d8b-c00c6199253f`.
-
-```powershell
-$mediaPayload = @{
-    contentTypeKey = "bcc6d08c-509e-4ab6-8d8b-c00c6199253f"
-    parentKey      = $null   # null = raíz de Media Library; reemplazar con GUID si va en carpeta
-    values         = @(
-        @{ alias = "altDefault"; value = $altText; culture = $null; segment = $null }
-    )
-} | ConvertTo-Json -Depth 5 -Compress
-
-try {
-    $mediaNode = Invoke-RestMethod -Uri "$baseUrl/umbraco/management/api/v1/media" `
-        -Method POST `
-        -Headers $headers `
-        -ContentType "application/json; charset=utf-8" `
-        -Body ([System.Text.Encoding]::UTF8.GetBytes($mediaPayload))
-
-    $mediaKey = $mediaNode.id   # GUID del nodo media recién creado
-    Write-Output "Nodo media creado: $mediaKey"
-} catch {
-    Write-Error "Error creando nodo media: $($_.Exception.Message)"
-    # Intentar leer el response body para más detalles
-    if ($_.Exception.Response) {
-        $reader = [System.IO.StreamReader]::new($_.Exception.Response.GetResponseStream())
-        Write-Error "Response body: $($reader.ReadToEnd())"
-    }
-    exit 1
-}
-```
-
-**Nota sobre `parentKey`:** Si el usuario especificó una carpeta en Media Library, primero busca la carpeta por nombre:
-```powershell
-$folders = Invoke-RestMethod -Uri "$baseUrl/umbraco/management/api/v1/media?skip=0&take=100" `
-    -Headers $headers
-$folder = $folders.items | Where-Object { $_.variants[0].name -eq $folderName }
-$parentKey = $folder?.id  # null si no se encontró (va a raíz)
-```
-
-## 5. Subir el archivo de imagen al nodo media
-
-Umbraco espera un `multipart/form-data` con el campo `file`. Usa `System.Net.Http`:
-
-```powershell
-Add-Type -AssemblyName System.Net.Http
-
-$httpClient = [System.Net.Http.HttpClient]::new()
-$httpClient.DefaultRequestHeaders.Add("Authorization", "Bearer $token")
-
-$multipart  = [System.Net.Http.MultipartFormDataContent]::new()
-$fileBytes  = [System.IO.File]::ReadAllBytes($tmpPath)
-$byteContent = [System.Net.Http.ByteArrayContent]::new($fileBytes)
-
-$ext = [System.IO.Path]::GetExtension($tmpPath).TrimStart('.')
-$mime = if ($ext -eq "svg") { "image/svg+xml" } else { "image/png" }
-$byteContent.Headers.ContentType = [System.Net.Http.Headers.MediaTypeHeaderValue]::new($mime)
-
-$multipart.Add($byteContent, "file", [System.IO.Path]::GetFileName($tmpPath))
-
-$uploadUri  = "$baseUrl/umbraco/management/api/v1/media/$mediaKey/file"
-$uploadTask = $httpClient.PostAsync($uploadUri, $multipart)
-$uploadResp = $uploadTask.GetAwaiter().GetResult()
-
-if ($uploadResp.IsSuccessStatusCode) {
-    Write-Output "Imagen subida correctamente — status $([int]$uploadResp.StatusCode)"
-} else {
-    $body = $uploadResp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-    Write-Error "Upload fallido ($([int]$uploadResp.StatusCode)): $body"
-    $httpClient.Dispose()
-    exit 1
-}
-
-$httpClient.Dispose()
-```
-
-## 6. Limpiar archivo temporal
+## 4. Limpiar el archivo temporal
 
 ```powershell
 if (Test-Path $tmpPath) {
@@ -248,36 +177,36 @@ if (Test-Path $tmpPath) {
 }
 ```
 
-## 7. Retorno — mediaKey y UDI
+## 5. Retorno — mediaKey, UDI y el valor del MediaPicker3
 
 Al finalizar, reportar:
 
 ```
-Media creado exitosamente:
-  mediaKey : <GUID>
-  UDI      : umb://media/<GUID>
+Media registrado:
+  mediaKey : <GUID del nodo media>
+  UDI      : umb://media/<GUID sin guiones>
   Alt text : <altText>
   Tamaño   : <width>x<height>px
   Nombre   : <fileName>
 
-Para usar en un campo MediaPicker3, el valor JSON del property value es:
-  [{"key": "<GUID>", "mediaKey": "<GUID>", "focalPoint": null, "crops": []}]
+Valor del property value de un MediaPicker3 (verificado en vivo, ver synergos-content-fill §4):
+  [{"key":"<GUID nuevo>","mediaKey":"<GUID del nodo media>","crops":[],"focalPoint":null}]
 ```
 
-Guardar el `mediaKey` para pasarlo a `synergos-cms-author` cuando se necesite.
+`key` es un GUID **nuevo** por cada selección; `mediaKey` es el del nodo. Pasar el valor a
+`synergos-content-fill` para llenar el campo.
 
-## 8. Troubleshooting
+## 6. Troubleshooting
 
 | Error | Causa probable | Solución |
 |-------|---------------|----------|
-| `404 /security/back-office/token` | URL Management API incorrecta en esta build | Verificar que el Umbraco de la versión clavada (`Directory.Packages.props`) está activo; probar con swagger en `/umbraco/swagger` |
-| `401 Unauthorized` | Credenciales incorrectas o sesión expirada | Regenerar token; verificar `UnattendedUserPassword` en appsettings.Development.json |
-| `400 Bad Request` en POST /media | `contentTypeKey` incorrecto o payload malformado | Verificar GUID de synImage (`bcc6d08c-509e-4ab6-8d8b-c00c6199253f`) en uSync |
+| `/dev/*` contesta 404 | `Synergos:DevSeed:Enabled=false` | encenderlo en `appsettings.Development.json`, o usar el backoffice |
+| El MediaPicker3 queda vacío al publicar | valor mal serializado | el formato del §5, como string JSON; ver `synergos-content-fill` §4 |
 | `System.Drawing` no carga | GDI+ no disponible (raro) | Usar fallback SVG (sección 2) |
-| Upload 422 Unprocessable Entity | Archivo corrupto o MIME incorrecto | Verificar que el PNG se generó correctamente con `Test-Path $tmpPath` |
-| CMS no responde (pre-flight) | App no arrancada | Ejecutar `dotnet run` en `Synergos.CMS.Web/` |
+| La imagen quedó en la raíz de Media | se creó sin carpeta | `GetOrCreateFolder` (server-side) o moverla en el backoffice |
+| CMS no responde (pre-flight) | App no arrancada | `synergos-run-dev` |
 
-## 9. Variantes de tamaño comunes
+## 7. Variantes de tamaño comunes
 
 | Uso | Width | Height | Color sugerido |
 |-----|-------|--------|---------------|

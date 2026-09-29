@@ -1,6 +1,6 @@
 ---
 name: synergos-usync-author
-description: Protocolo seguro para escribir y editar XMLs de uSync (schema source-of-truth de Synergos). Cubre las reglas de inmutabilidad de Keys/GUIDs, GUID quad-check, encoding, anatomía exacta de XMLs para ContentType/DataType/Template/Dictionary, dependency ordering, y el flujo de export desde el backoffice. Invocar antes o durante la autoría de cualquier XML de schema — especialmente cuando synergos-cms-author delega la generación de XMLs complejos.
+description: Protocolo seguro para escribir y editar XMLs de uSync (schema source-of-truth de Synergos). Cubre las reglas de inmutabilidad de Keys/GUIDs, GUID quad-check, encoding, anatomía de los XMLs de ContentType/DataType/Template/Dictionary (la del Dictionary tomada del disco, con la regla de qué sección de claves llega a la UI por el bridge; para ContentType y DataType manda un fichero vivo del mismo tipo), dependency ordering, y el flujo de export desde el backoffice. Invocar antes o durante la autoría de cualquier XML de schema — especialmente cuando synergos-cms-author delega la generación de XMLs complejos.
 model: claude-opus-4-8
 ---
 
@@ -188,6 +188,15 @@ Siempre la primera línea:
 2 espacios (no tabs). Consistente con los XMLs existentes en el repo.
 
 ---
+
+> ⚠️ **Las anatomías de §4 y §5 no son la forma del disco de hoy, y la plantilla que manda es un
+> fichero vivo del mismo tipo.** Medido contra `uSync/v9/` (2026-09-29): un ContentType declara sus
+> compositions en `<Info><Compositions><Composition Key="…">alias</Composition>`, no en
+> `<CompositionKeys>`; su `<Type>` es el alias del editor (`Umbraco.TextBox`) y el `<Tab>` lleva
+> `Alias` como atributo; un DataType lleva `<EditorAlias>` y `<DatabaseType>` dentro de `<Info>` y
+> su configuración en `<Config>` como JSON en CDATA — ningún fichero tiene `<PreValues>`. Antes de
+> escribir uno, abrí un vecino del mismo tipo y copiá su forma (`synergos-cms-author` §4C tiene una
+> plantilla de ElementType tomada del disco). Reescribir §4-§5 queda pendiente; §7 ya está al día.
 
 ## 4. Anatomía XML — ContentType (DocType / ElementType / Composition)
 
@@ -413,21 +422,48 @@ Write-Output "compDomId Key: $compKey"
 
 ## 7. Anatomía XML — Dictionary
 
+La forma del disco (`uSync/v9/Dictionary/accordion.collapse.config`, por ejemplo). El fichero va en
+minúsculas con el alias con puntos; el alias, en PascalCase; el `<Parent>` es la **sección** —el
+primer segmento del alias—, que tiene su propio ítem (`accordion.config`, `common.config`), también
+para claves de tres segmentos como `Common.Actions.Close`:
+
 ```xml
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<DictionaryItem Key="{GUID-fresco-verificado}"
-                ItemKey="{Syn.NombreClave}"
-                ParentKey="{GUID-del-padre-o-vacío}">
+<?xml version="1.0" encoding="utf-8"?>
+<Dictionary Key="{GUID-fresco-verificado}" Alias="{Seccion}.{Clave}" Level="1">
+  <Info>
+    <Parent>{Seccion}</Parent>
+  </Info>
   <Translations>
-    <Translation Language="es-co">
-      <![CDATA[Valor en español para Colombia]]>
-    </Translation>
-    <Translation Language="en-us">
-      <![CDATA[Value in English]]>
-    </Translation>
+    <Translation Language="en-US">{Value in English}</Translation>
+    <Translation Language="es-CO">{Valor en español para Colombia}</Translation>
   </Translations>
-</DictionaryItem>
+</Dictionary>
 ```
+
+### 7.1 La sección de una clave decide si llega a la UI
+
+El CMS publica el diccionario a las apps Angular en `window.synergos.i18n`, **filtrando por una
+lista fija de prefijos**: `I18nKeyPrefixes` de `HostBridgeSettings`
+(`Synergos.CMS.Application/Configuration/HostBridgeSettings.cs`). Una clave que una funcionalidad
+lee con `t()` y que **no** cae en uno de esos prefijos no llega nunca: sale siempre el respaldo
+escrito en el código y **parece traducida** (UI regla 44). Antes de crear una clave para la UI:
+
+- que su sección esté en esa lista — o se pide en el ticket, porque cambiar la lista es cambiar lo
+  que viaja en cada página;
+- que no sea un prefijo que la lista publica y **no casa ninguna clave** (hay algunos): eso no la
+  arregla, sólo la confirma;
+- que la clave sirva a la **funcionalidad** que traduce; las hojas del design system reciben el
+  texto ya traducido.
+
+**Mañana** (ADR 0136, Propuesta): la lista fija desaparece y cada elemento declara sus secciones.
+
+### 7.2 Lo que no es una clave de diccionario
+
+- **Datos maestros** (ciudades, categorías, estados de un dominio): van en su origen y se traducen
+  en el servidor (ADR 0136 §5), no como `Seccion.` + código.
+- **Una clave que una vista Razor pide con respaldo** y no existe en uSync no rompe nada y no la
+  avisa nadie (`usync-audit` sólo mira las llamadas **sin** respaldo): si la vista la necesita
+  traducida, se crea.
 
 ---
 
@@ -443,7 +479,7 @@ Write-Output "compDomId Key: $compKey"
 | Settings alias | `cfg{Pascal}` | `cfgAlert`, `cfgSiteConfigSettings` |
 | BlockList DataType | `DTBlockList{Pascal}` | `DTBlockListMainContent` |
 | Template alias | `{Pascal}` coincidiendo con el DocType | `PageStandard` |
-| Dictionary key | `Syn.{Contexto}.{Campo}` | `Syn.Nav.SkipToContent` |
+| Dictionary key | `{Seccion}.{Clave}` en PascalCase, sección publicada si la lee la UI (§7.1) | `Accordion.Collapse`, `Common.Actions.Close` |
 | XML filename | `{alias}.config` | `elementSynHeroBanner.config` |
 
 ---
@@ -463,7 +499,7 @@ uSync/v9/
 ├── Templates/
 │   └── *.config            ← Templates Razor (nombre = alias del DocType)
 ├── Dictionary/
-│   └── Syn.*.config        ← Claves de diccionario
+│   └── {seccion}.{clave}.config ← Claves de diccionario (fichero en minúsculas)
 ├── MediaTypes/
 │   └── *.config            ← MediaTypes (sinImage, etc.)
 └── Languages/

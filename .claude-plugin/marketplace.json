@@ -1,0 +1,15 @@
+{
+  "name": "synergos-fabrica",
+  "description": "El arnés de Claude Code de Synergos (CMS Umbraco 13 + UI Angular por CDN): una sola copia de las skills, fijada por SHA en el arnes.lock.json de cada repo.",
+  "owner": {
+    "name": "CHERCED-DEV",
+    "url": "https://github.com/CHERCED-DEV"
+  },
+  "plugins": [
+    {
+      "name": "synergos-fabrica",
+      "source": "./",
+      "description": "Las skills synergos-* que usan Synergos.CMS y Synergos.UI."
+    }
+  ]
+}

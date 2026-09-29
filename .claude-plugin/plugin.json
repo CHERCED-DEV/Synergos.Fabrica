@@ -1,0 +1,10 @@
+{
+  "name": "synergos-fabrica",
+  "description": "Las skills synergos-* que usan Synergos.CMS y Synergos.UI: una sola copia, consumida por los dos repos.",
+  "author": {
+    "name": "CHERCED-DEV",
+    "url": "https://github.com/CHERCED-DEV"
+  },
+  "repository": "https://github.com/CHERCED-DEV/Synergos.Fabrica",
+  "keywords": ["synergos", "umbraco", "angular", "arnes"]
+}

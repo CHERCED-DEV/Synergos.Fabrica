@@ -1,7 +1,6 @@
 ---
 name: synergos-run-dev
 description: Arranca el entorno de desarrollo completo de Synergos — CMS Umbraco (la URL del Kestrel de Development), el CDN que construye Synergos.UI (FileSystem desde public/, o HTTP con dev:cdn) y opcionalmente el ciclo editor→navegador de un elemento. Verifica prerequisitos (hosts, cert, CDN construido), detecta si ya está corriendo, y comprueba al terminar con /_health y las herramientas de humo del CMS. Usar antes de invocar synergos-content-fill o synergos-cdn-build.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS Run Dev — arrancar el stack completo de desarrollo

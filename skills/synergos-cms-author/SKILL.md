@@ -1,7 +1,6 @@
 ---
 name: synergos-cms-author
 description: Authoring full-stack del SCHEMA de Synergos CMS — cuando no existe el ElementType/Composition/DataType necesario, lo crea completo (uSync XML + Razor view SynHost + componente Angular standalone), leyendo el schema vivo de uSync/v9/. Antes de crear clasifica si es funcionalidad o pieza (ADR 0134), busca el concepto en el design system para montarlo en vez de rehacerlo, y deja las claves que emite la vista SynHost iguales a las que conserva el sanitizador del elemento, comprobado con un spec (el defecto D1). El contenido editorial y la media no los crea esta skill: se autoran server-side (IContentService/IMediaService detrás del flag DevSeed) con synergos-content-fill y synergos-media-upload.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS CMS Author — full-stack schema + content + media

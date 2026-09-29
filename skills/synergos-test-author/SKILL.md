@@ -1,7 +1,6 @@
 ---
 name: synergos-test-author
 description: Escribe tests xUnit para seams de Synergos CMS siguiendo los 4 casos canónicos del proyecto — empty, happy, filter, idempotent (ADR 0075). Conoce los frameworks (xUnit + NSubstitute + FluentAssertions), las trampas de NSubstitute en Umbraco, y los patrones de mock para IBundleRegistryClient, ISynHostEmitter, IBrandingProvider e IAuditTrailWriter. Cubre también los gates que leen la fuente del disco: mutar cada uno y comprobar que la mutación entró, acotar la aserción a su frase y no al fichero entero (la lección de SegundoConsumidorTests), los dos sentidos, la lista antes que la cifra y la red por el vacío. Invocar cuando se crea un nuevo seam o se modifica uno existente, o al escribir o endurecer un gate.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS Test Author — escribir tests xUnit para seams

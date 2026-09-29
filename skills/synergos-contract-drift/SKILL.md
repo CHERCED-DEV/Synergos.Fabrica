@@ -1,7 +1,6 @@
 ---
 name: synergos-contract-drift
 description: Diagnostica y arregla DRIFT de contrato entre el CMS y las apps Angular custom-element, en sus DOS superficies. (1) La API: los DTOs record de Synergos.CMS.Web/Controllers/ contra lo que la app lee en <app>.model.ts y en el normalizeX() de <app>-api.client.ts — actívala cuando una ficha (eventos, realty, storefront, academy, ehr, gov, booking, blogs) muestra datos vacíos, precio en 0 o Gratis erróneo, separadores colgantes, mapa sin pines o campos por defecto. (2) El config que emite la vista SynHost contra lo que conserva el sanitizador del elemento (el defecto D1): el SSR se ve bien y al hidratar el elemento se pinta vacío encima, sin error, porque la vista manda claves que el elemento no lee — ahí ningún normalizador tapa nada. Cubre hallar las claves que la UI lee, compararlas con lo que emite el CMS, evaluar la severidad REAL (en la API casi nada crashea porque cada cliente hace value[uiKey] ?? value[legacyKey]; D1 en cambio borra lo que escribió el editor), el reshape build-safe (agregar campos, [property: JsonPropertyName] para la clave exacta, conservar las legacy, params opcionales con default en records de dominio) y verificar ejecutando: curl al endpoint sin leaks, el sanitizador alimentado con el config exacto de la vista, y el navegador con una consulta de control. La UI es la fuente de verdad del nombre (ADR 0083): se mueve el backend o la vista, no el elemento, y el fallback del cliente no es el arreglo.
-model: claude-opus-4-8
 ---
 
 # synergos-contract-drift

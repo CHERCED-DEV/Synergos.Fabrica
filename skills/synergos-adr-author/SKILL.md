@@ -1,7 +1,6 @@
 ---
 name: synergos-adr-author
 description: Escribe un ADR (Architecture Decision Record) para Synergos siguiendo el formato exacto del proyecto. Asigna el número correcto (siguiente al más alto existente), genera el archivo en Synergos.CMS/Synergos.CMS.Web/docs/adr/ con el formato del ADR más reciente, lo agrega en el mismo commit al índice versionado docs/adr/README.md (lo vigila AdrIndexTests) y a la cuenta de CLAUDE.md §2 (CifrasDeClaudeMdTests), y aparte, si la máquina lo tiene, al §11.2 de refactor-docs. Cubre cómo se escribe una ADR Propuesta con el piloto que la acepta —el molde de las 0135-0139— y cómo lleva sus cifras (con fecha, SHA base y marca de certeza). Invocar cuando se toma una decisión arquitectónica que debe quedar registrada.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS ADR Author — registrar decisiones arquitectónicas

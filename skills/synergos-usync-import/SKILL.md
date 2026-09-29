@@ -1,7 +1,6 @@
 ---
 name: synergos-usync-import
 description: Guía el flujo completo de uSync Import después de que el agente escribió nuevos XMLs de schema (ContentTypes, DataTypes, Templates, Dictionary). Pre-valida XMLs, hace backup SQLite, da instrucciones neutrales de backoffice para el Import, lista los logs que confirman éxito, verifica post-import con node tools/usync-audit.mjs y los aliases del XML contra la base (sólo lectura), y diagnostica errores comunes. Usar siempre después de synergos-cms-author cuando creó schema nuevo.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS uSync Import — importar schema al CMS

@@ -1,7 +1,6 @@
 ---
 name: synergos-ola-close
 description: Cierra una Ola de desarrollo de Synergos siguiendo el flujo estándar de 20 pasos — verifica entregables, corre TODAS las suites y los tramos de la UI por separado aunque uno salga en rojo (una cadena && esconde lo de detrás), compara cada rojo por nombre con la línea base de la apertura (los de entorno de Windows, por ticket), corre los gates del schema (usync-audit, usync-rebuild-check), hace backup, commitea uSync XMLs + Razor + Angular con el mensaje canónico en cada repo, actualiza §11.x en los docs de arquitectura, y genera el resumen de cierre. Invocar al terminar todos los trabajos de una Ola antes de comenzar la siguiente.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS Ola Close — cierre estándar de una Ola

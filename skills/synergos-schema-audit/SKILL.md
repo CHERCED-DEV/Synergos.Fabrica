@@ -1,7 +1,6 @@
 ---
 name: synergos-schema-audit
 description: Auditoría completa del schema de Synergos — cruza uSync XMLs contra Razor views, Angular projects, registry.json y código C# para encontrar orphans, ElementTypes incompletos, DataTypes sin uso, compositions sin consumers, GUIDs rotos en BlockLists, y elementos "a medias". Genera un reporte accionable por categoría, con red por el vacío en cada conteo (un paso que da cero en todo está roto, no limpio), y sin proponer retirar nada por defecto: lo que no tiene consumidor es vocabulario hasta que el arquitecto decida (ADR 0134).
-model: claude-opus-4-8
 ---
 
 # SYNERGOS Schema Audit — auditoría cruzada del schema

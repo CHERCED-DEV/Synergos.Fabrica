@@ -1,7 +1,6 @@
 ---
 name: synergos-guardrails
 description: LÉEME PRIMERO. Onboarding y guardrails del proyecto Synergos — cómo trabajamos, cómo lo hacemos y qué NO hacer NUNCA. Es un proyecto delicado (Umbraco 13 CMS que compone vitrinas SSR + apps Angular custom-element vía CDN local + design system tokenizado, temas por-siteRoot). Actívala al ENTRAR al proyecto o antes de proponer cualquier cambio, para no violar los principios inviolables. Consolida en un solo lugar los principios del árbol del CMS (grafo de dependencias, schema solo uSync no code-first, cero seeders, branding vía provider, no multi-tenant, CDN consumido no owned, GUIDs cuádruple), el modelo de lo que el editor coloca (ADR 0134: funcionalidad o pieza, el CMS da cableado y no la configuración completa, nada se retira por defecto, un elemento con gemela en el design system la monta), la disciplina de medición (un grep es una hipótesis, las cifras las imprime un gate), la premisa capital COMPONER-NUNCA-HARDCODEAR (spacing vía Layout Composer, colores vía tokens --syn-*), la verificación real (build verde ≠ hecho; navegador + todos los temas), el rebuild del runtime compartido, la higiene de commits/DB, y el pin de Umbraco 13. Es el índice que remite a las skills específicas y a los ADRs. Cubre los DOS árboles del repo: el del CMS (Umbraco/uSync/CDN) y el de servicios (capacidades agnósticas + orquestadores sobre Bff.Core), que tienen reglas distintas.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS — Guardrails y forma de trabajo (LÉEME PRIMERO)

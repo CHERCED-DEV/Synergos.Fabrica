@@ -1,7 +1,6 @@
 ---
 name: synergos-usync-author
 description: Protocolo seguro para escribir y editar XMLs de uSync (schema source-of-truth de Synergos). Cubre las reglas de inmutabilidad de Keys/GUIDs, GUID quad-check, encoding, anatomía de los XMLs de ContentType/DataType/Template/Dictionary (la del Dictionary tomada del disco, con la regla de qué sección de claves llega a la UI por el bridge; para ContentType y DataType manda un fichero vivo del mismo tipo), dependency ordering, y el flujo de export desde el backoffice. Invocar antes o durante la autoría de cualquier XML de schema — especialmente cuando synergos-cms-author delega la generación de XMLs complejos.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS uSync Author — protocolo seguro de autoría de schema XMLs

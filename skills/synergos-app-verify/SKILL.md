@@ -1,7 +1,6 @@
 ---
 name: synergos-app-verify
 description: Verificación END-TO-END en NAVEGADOR de las apps/fichas Angular custom-element (synergos-*) de SynergosLabs — lo que un smoke HTTP no ve. Activar DESPUÉS de synergos-cdn-build / synergos-smoke-test, tras republicar bundles o tocar libs/shared, o cuando el arquitecto reporta "la app no aparece / se ve pobre / rota". Complementa (no duplica) synergos-smoke-test: aquí se fuerza la hidratación real de custom elements montados lazy, se verifica customElements.get, se hace leak-scan del DOM (undefined/NaN/[object), se comprueba que lo hidratado muestre lo que el editor escribió y el SSR pintó (el defecto D1: la vista SynHost manda claves que el elemento no lee), se observa si las regiones vivas nacen con su mensaje o hablan cada segundo, se mide overflow horizontal responsive a 375px, y se recorren todos los temas por-siteRoot (data-theme) para cazar roturas de contraste que solo aparecen en un tema. Incluye los gotchas reales de las dos herramientas de navegador (embebido vs Chrome-ext) y el recordatorio de rehacer el runtime compartido (npm run build:cdn) cuando un cambio de libs/shared no se ve.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS App Verify — verificación viva de apps Angular en el navegador

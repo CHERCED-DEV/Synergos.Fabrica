@@ -1,7 +1,6 @@
 ---
 name: synergos-smoke-test
 description: Prueba de humo de Synergos — primero las herramientas del CMS que piden la página desde un clon limpio (humo-portada, humo-conectado: portada servida, import map, un script por tag, bundles 200), y después el HTML de un CMS corriendo (sin placeholders, SEO, bundles con Content-Type y Cache-Control correctos, scripts sin 404). Ejecutar después de synergos-cdn-build o cualquier cambio de infraestructura.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS Smoke Test — verificación post-deploy

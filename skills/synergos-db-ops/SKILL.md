@@ -1,7 +1,6 @@
 ---
 name: synergos-db-ops
 description: Operaciones seguras sobre la base de datos SQLite de Umbraco (Umbraco.sqlite.db). Protocolo obligatorio — stop CMS → checkpoint WAL → backup → operar → integrity check → restart. Cubre lectura segura, consultas de diagnóstico, corrección de datos, backup y restore. NO usar para cambios de schema — eso es territorio de uSync (synergos-usync-author + synergos-usync-import).
-model: claude-opus-4-8
 ---
 
 # SYNERGOS DB Ops — operaciones SQLite seguras

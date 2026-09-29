@@ -95,6 +95,38 @@ test('la description no está vacía y cabe en el listado de skills', () => {
   }
 });
 
+/**
+ * Una clave `model` en el frontmatter, con o sin comillas y con o sin espacio antes de los dos
+ * puntos: las tres formas son la misma clave para el parser de YAML, así que las tres cuentan.
+ */
+const CLAVE_MODEL = /^\s*(["']?)model\1\s*:/;
+
+/**
+ * Por qué ninguna skill fija `model:` (decisión del arquitecto, 2026-09-29, #142): es una constante
+ * con fecha de caducidad escrita en veinte sitios —veinte de las veinticuatro skills rescatadas
+ * fijaban el mismo—, que es la forma que tenía el pin de Umbraco antes del #149: una versión a mano
+ * en siete ficheros y nadie que los cruzara. El día que ese modelo se retire o no esté en la
+ * instalación de quien usa la skill, lo que falla no es un fichero: son veinte, y ninguno avisa. Sin
+ * la clave, la skill corre con el modelo de la sesión, que es el que eligió quien la abre.
+ * Sólo mira el frontmatter: el cuerpo de una skill puede explicar la clave.
+ */
+test('ninguna skill fija model: en su frontmatter', () => {
+  const fijan = [];
+  for (const c of carpetasDeSkill()) {
+    const lineas = readFileSync(join(SKILLS, c, 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n').split('\n');
+    const fin = lineas.indexOf('---', 1);
+    if (lineas[0] !== '---' || fin < 0) continue; // sin frontmatter: lo dice el primer test
+    lineas.slice(1, fin).forEach((l, i) => {
+      if (CLAVE_MODEL.test(l)) fijan.push(`${c}/SKILL.md:${i + 2}  ${l.trim()}`);
+    });
+  }
+  assert.deepEqual(
+    fijan,
+    [],
+    `skills que fijan un modelo — quitá la clave; la skill hereda el de la sesión:\n  ${fijan.join('\n  ')}`,
+  );
+});
+
 // ── Lo que una skill nombra, existe ──────────────────────────────────────────
 
 test('toda referencia a un fichero de references/ o de otra skill existe', () => {

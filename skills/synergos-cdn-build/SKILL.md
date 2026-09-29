@@ -1,7 +1,6 @@
 ---
 name: synergos-cdn-build
 description: Compila y publica los elementos de Synergos.UI al CDN que lee el CMS — npm run build:cdn deja en public/ los elementos de todas las plataformas, sus runtimes, registry.json con la integridad de cada bundle, y mide el presupuesto de tamaño. Cubre el ciclo de un solo elemento (dev:cdn --solo), el rebuild obligatorio del runtime al tocar libs/shared, y la verificación contra el disco (registry.json), /_health del CMS y humo-conectado para la hidratación. Usar después de crear o modificar un elemento.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS CDN Build — compilar y publicar los elementos al CDN

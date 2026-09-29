@@ -1,7 +1,6 @@
 ---
 name: synergos-element-inventory
 description: Genera un mapa cruzado completo de todos los elementos de Synergos — cruza uSync XMLs (ElementTypes), Razor views (SynHost + Block Grid wrappers), las fuentes de la UI (cada carpeta con src/main.ts, lo mismo que compila build.mjs), y los bundles publicados (registry.json del CDN construido). Detecta elementos incompletos ("a medias") y los clasifica por nivel de completitud. Pone al lado lo que las capas no dicen: si cada elemento con gemela en el design system la monta (la regla de los dos pisos, contada con dos señales para que el elemento no se cuente a sí mismo) y cómo se clasifica un bundle sin ElementType (embebido, otro alias o vocabulario), sin proponer retirar nada. Útil antes de una Ola para saber el estado real.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS Element Inventory — mapa cruzado de todos los elementos

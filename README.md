@@ -103,6 +103,11 @@ Cada repo de código tiene en su raíz un `arnes.lock.json`, **idéntico en los 
    dispara.
 6. **Toda skill nueva pasa el medidor y los tests**, y todo cambio al medidor entra con su fixture
    y su mutación: se reintroduce el defecto, se ve el rojo, se restaura tocando el fichero.
+7. **Ninguna skill fija `model:`** en su frontmatter (decisión del arquitecto, 2026-09-29, #142):
+   la skill corre con el modelo de la sesión. Veinte de las veinticuatro skills rescatadas fijaban
+   el mismo, y eso es una constante con fecha de caducidad escrita en veinte sitios — la forma que
+   tenía el pin de Umbraco antes del #149. Un modelo fijado puede además no estar en la instalación
+   de quien usa la skill. Lo rechaza `tests/estructura.test.mjs`.
 
 ## Correrlo
 
@@ -127,9 +132,3 @@ El medidor busca los dos repos en `--cms-path=` / `--ui-path=`, en `SYNERGOS_CMS
   trae se mergea antes— y el día que una ADR propuesta se acepta, en cada línea que la siga
   llamando propuesta. El CI de este repo comprueba la
   **forma**; no confíes en él para la deriva.
-- **Decisión pendiente del arquitecto:** la mayoría de las skills fijan `model:` en su
-  frontmatter a un modelo concreto. Un modelo fijado puede no estar disponible en la instalación
-  de quien la usa: la documentación de skills dice que uno excluido por `availableModels` no se
-  usa y la sesión sigue con el suyo; qué pasa con uno que ya no existe, no está verificado. Es
-  además una constante con fecha de caducidad escrita en muchos sitios y sin nadie que la cruce.
-  Cuántas lo hacen: `grep -l '^model:' skills/*/SKILL.md`.

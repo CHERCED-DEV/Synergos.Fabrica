@@ -1,7 +1,6 @@
 ---
 name: synergos-content-fill
 description: Autoría server-side de contenido editorial en Synergos (Umbraco 13) con TODOS los campos diligenciados. Descubre los campos resolviendo la cadena de compositions, serializa cada valor por DataType para IContentService, aplica la regla de cultura por-propiedad, fuerza mandatory + alt text, y construye BlockGrid editor-safe. Umbraco 13 NO tiene Management API — la autoría es C# server-side detrás del flag DevSeed. Requiere el CMS corriendo (SYNERGOS_CMS_URL).
-model: claude-opus-4-8
 ---
 
 # SYNERGOS Content Fill — completitud de campos server-side (IContentService)

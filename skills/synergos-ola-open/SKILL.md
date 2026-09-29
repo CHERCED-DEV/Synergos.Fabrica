@@ -1,7 +1,6 @@
 ---
 name: synergos-ola-open
 description: Abre una nueva Ola de desarrollo de Synergos — empieza por la Fase 0 (medir el árbol heredado antes de tocarlo: worktree propio y trabajo ajeno sin tocar, escritura en GitHub, la línea base de suites con cada rojo por nombre y los de entorno de Windows por ticket, y la lista heredada medida en los dos sentidos), determina el número siguiente, define el alcance y entregables, identifica los ADRs que se crearán, ejecuta un health check inicial, hace backup del DB, y prepara el contexto completo para que synergos-cms-author y synergos-usync-author trabajen con información completa. Invocar al inicio de cada ciclo de trabajo nuevo.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS Ola Open — abrir una nueva Ola de desarrollo

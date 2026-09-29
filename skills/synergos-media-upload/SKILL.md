@@ -1,7 +1,6 @@
 ---
 name: synergos-media-upload
 description: Genera una imagen PNG (o SVG) y la registra en la biblioteca de medios de Umbraco 13 por las vías que existen — el seam server-side DevMediaFactory (IMediaService detrás del flag DevSeed) o el backoffice. Usar cuando se necesita una imagen (hero, og:image, thumbnail, avatar, logo placeholder) disponible en un campo MediaPicker3. Devuelve el valor MediaPicker3 (mediaKey + UDI). Requiere el CMS corriendo (SYNERGOS_CMS_URL).
-model: claude-opus-4-8
 ---
 
 # SYNERGOS Media Upload — generar una imagen y registrarla en Umbraco

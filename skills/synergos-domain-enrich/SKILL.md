@@ -1,7 +1,6 @@
 ---
 name: synergos-domain-enrich
 description: Enriquece un dominio/vertical de Synergos a nivel best-in-class de forma COMPOSABLE y build-safe, con la receta de 3 capas derivada del enriquecimiento de Eventos (artist + highlights + sessions). Actívala cuando haya que darle más carne a la ficha o pantalla de un dominio (Eventos, Tienda, Healthcare, Propiedades, etc.): la UI Angular ya lee campos ricos pero el backend cae a fallbacks pobres, o quieres agregar contenido real es-CO a un stub. Cubre el orden obligatorio: (1) leer el model.ts + template Angular para saber QUÉ lee la UI y con qué guards, (2) Interfaces: records de dominio nuevos + campos OPCIONALES con default=null al record existente (aditivo → cero call-sites rotos, la clave del build-safe), (3) Application: poblar el stub con contenido real es-CO revisado por un crítico, (4) Web: DTOs + reshape del response + helpers null-safe emitiendo las claves EXACTAS del contrato (ADR 0083), (5) build cross-project + verificar API sin leaks + navegador. Antes decide por qué canal entra cada campo: un vertical es una funcionalidad (ADR 0134) que recibe cableado, así que los datos del dominio van por la API, los textos de la UI por t() y una regla de negocio nunca por configOverride. Respeta ADR 0002 (Application sin Umbraco) y complementa synergos-contract-drift.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS Domain Enrich — subir un dominio a best-in-class, composable y build-safe

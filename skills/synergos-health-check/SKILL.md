@@ -1,7 +1,6 @@
 ---
 name: synergos-health-check
 description: Diagnóstico rápido del stack de Synergos — /_health del CMS (sus probes con nombre), bundle registry y CDN estático, sitio público, integridad de la DB, respaldo reciente y el audit del schema uSync. Genera un reporte semáforo (OK/WARN/FAIL) en segundos. Punto de partida de cualquier sesión de trabajo o verificación post-deploy.
-model: claude-opus-4-8
 ---
 
 # SYNERGOS Health Check — diagnóstico del stack

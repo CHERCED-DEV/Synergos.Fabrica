@@ -1,6 +1,6 @@
 ---
 name: synergos-bff-author
-description: Construye un orquestador de dominio (Synergos.Bff.*) sobre la máquina de sagas de Synergos.Bff.Core. Cubre lo único que un BFF aporta y ninguna capacidad puede aportar — el ORDEN de los pasos y la COMPENSACIÓN — más las trampas que ya costaron caro: la compensación que cambia de carácter al capturar o consumir, cerrar puertas demasiado pronto, y confundir una compensación ARMADA con una PENDIENTE. Invocar al arrancar un orquestador nuevo o al tocar el flujo de uno existente (los que hay son los directorios de backend/orquestadores/ del CMS).
+description: Construye un orquestador de dominio (Synergos.Bff.*) sobre la máquina de sagas de Synergos.Bff.Core. Cubre lo único que un BFF aporta y ninguna capacidad puede aportar — el ORDEN de los pasos y la COMPENSACIÓN — más las trampas que ya costaron caro: la compensación que cambia de carácter al capturar o consumir, cerrar puertas demasiado pronto, confundir una compensación ARMADA con una PENDIENTE, y leer algo que nadie escribe (un consentimiento que nada otorga, una plantilla que nada aprovisiona). Invocar al arrancar un orquestador nuevo o al tocar el flujo de uno existente (los que hay son los directorios de backend/orquestadores/ del CMS).
 ---
 
 # SYNERGOS BFF Author — escribir un orquestador de dominio
@@ -151,7 +151,8 @@ que la línea quedó mal cortada** — paralo y revisá, no lo parchees.
 
 ## 5. Los tests — y lo que de verdad los valida
 
-En `Synergos.CMS.Tests/Bff/`. El harness está en `CompensationTests` (fijo) y
+En `backend/Synergos.Servicios.Tests/Bff/` (la suite del árbol de servicios, que no ve el CMS;
+`CLAUDE.md` §0.A.9). El harness está en `CompensationTests` (fijo) y
 `PurchaseCompensationTests` (variable): un `HttpMessageHandler` guionado que
 permite **matar una capacidad justo entre dos pasos**, que es el instante que un
 proceso real no deja elegir.
@@ -195,6 +196,22 @@ El aviso de compensación colgada necesita **dos cosas que no se inventan**:
 No hay seeder que las cree — CLAUDE.md §0.4 los prohíbe, y adivinar una dirección
 de guardia es peor que no mandar nada.
 
+> **Y hoy nada la aprovisiona**: `provisionar.sh` siembra definiciones, recursos y precios, no
+> plantillas, y `POST /v1/templates` no tiene llamador fuera de los tests. En un servidor limpio el
+> aviso sale `notifications.template_not_found`. Los marcadores válidos son los que rellena
+> `CompensationAlert` en el código, **no** los del doc 09 §5.2, que documenta unos que el código ya
+> no manda (`CLAUDE.md` §11 del CMS, «Lo que NO está»).
+
+### 6.1 ¿Quién escribe lo que tu flujo lee?
+
+Un orquestador que **comprueba** algo antes de actuar depende de que alguien lo **escriba**. La
+auditoría encontró dos lecturas sin escritor dormidas detrás de interruptores apagados: `Bff.Salud`
+exige el consentimiento `salud.agenda` antes de apartar el cupo y **nada lo otorga** —ni el CMS,
+ni `tools/`, ni la UI—, así que con `Synergos:Salud:Mode=Bff` se rechazaría toda cita; y la
+plantilla de arriba. Por cada `check`, `GET` o precondición del flujo, buscar su escritor en los
+tres árboles (el CMS, la UI y `provisionar.sh`) **antes** de dar el flujo por terminado; si no
+hay, es un hueco de cableado del ticket, no un detalle de despliegue.
+
 ## 7. Checklist
 
 - [ ] Referencias: Core + Shared + Bff.Core. Ninguna `Api.*`, ningún otro `Bff.*`
@@ -205,5 +222,6 @@ de guardia es peor que no mandar nada.
 - [ ] Compensaciones anotadas cuando existe lo que deshacen
 - [ ] Tests de lo propio + **mutación de cada decisión**
 - [ ] **Verificado matando una capacidad a mitad de flujo**
+- [ ] Cada precondición que el flujo lee tiene quien la escriba (§6.1)
 - [ ] `Synergos.CMS.sln`, `CLAUDE.md` §2 y §11, y un doc de producto si el flujo
       enseñó algo nuevo

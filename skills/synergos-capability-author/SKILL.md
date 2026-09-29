@@ -1,6 +1,6 @@
 ---
 name: synergos-capability-author
-description: Crea o modifica una capacidad agnóstica del árbol de servicios (Synergos.Api.*) siguiendo EL MOLDE — las cuatro carpetas, las cinco formas de endpoint, las siete reglas de construcción y los gates que lo verifican (ApiMoldTests, BackendSegregationTests). Conoce el filtro de atomicidad (¿puede decir NO sola? ¿es dueña de su almacén?), la regla del Ref opaco, el orden idempotencia-antes-que-estado, y la disciplina de mutar cada gate. Invocar ANTES de escribir una Synergos.Api.* nueva, al agregarle endpoints a una existente, o cuando alguien propone una capacidad y hay que decidir si de verdad lo es.
+description: Crea o modifica una capacidad agnóstica del árbol de servicios (Synergos.Api.*) siguiendo EL MOLDE — las cuatro carpetas, las cinco formas de endpoint, las siete reglas de construcción y los gates que lo verifican (ApiMoldTests, BackendSegregationTests). Conoce el filtro de atomicidad (¿puede decir NO sola? ¿es dueña de su almacén?), la regla del Ref opaco, el orden idempotencia-antes-que-estado, la disciplina de mutar cada gate, y que antes de crear o cablear se busca el doble LOCAL del mismo concepto en el CMS (para S11 son dos respuestas y elegir es de producto), sin proponer retirar ninguna por no tener consumidor. Invocar ANTES de escribir una Synergos.Api.* nueva, al agregarle endpoints a una existente, o cuando alguien propone una capacidad y hay que decidir si de verdad lo es.
 ---
 
 # SYNERGOS Capability Author — escribir una `Synergos.Api.*`
@@ -40,6 +40,23 @@ solo consumidor casi siempre es una feature de su BFF.
 > de más es el error caro de esta arquitectura: cada una suma un proceso, un
 > almacén, un despliegue y una superficie que mantener para siempre.
 
+### 0.1 Y antes de crear o cablear: ¿el CMS ya lo hace en local?
+
+La auditoría de reutilización midió que **casi todas las capacidades con uno o ningún consumidor
+tienen una implementación LOCAL del mismo concepto en el CMS**, sin cliente `Http*` ni
+interruptor que las una: la tabla de pares está en `CLAUDE.md` §11 del CMS («construido tampoco
+es ÚNICO»). Para S11 eso son **dos respuestas publicadas a la misma pregunta**, y ninguna regla
+escrita que elija.
+
+- **Antes de crear una capacidad**, buscar el seam local del mismo concepto en
+  `Synergos.CMS.Interfaces` (un `I*Service`, `I*Store`, `I*Ledger`…). Si existe, la pregunta
+  no es «¿hace falta la capacidad?» sino **«¿cuál de las dos es la buena?»**, y es de producto.
+- **Antes de cablear** una existente, lo mismo: cablear es elegir la capacidad sobre el local, y a
+  veces lo local es lo correcto (su dato lo autora el editor).
+- **No se implementa una tercera.** Y ninguna de las dos se borra por no tener consumidor: «sin
+  segundo consumidor» es una lista que `SegundoConsumidorTests` deriva del disco (`CLAUDE.md`
+  §11), no una propuesta de baja (ADR 0134 §3).
+
 ---
 
 ## 1. El molde — las cuatro carpetas, sin excepciones
@@ -62,9 +79,12 @@ carísimo el segundo, porque cada renombre interno pasa a ser cambio de contrato
 `Synergos.Api.X.csproj` referencia **exactamente dos** proyectos:
 
 ```xml
-<ProjectReference Include="..\Synergos.Core\Synergos.Core.csproj" />
-<ProjectReference Include="..\Synergos.Shared\Synergos.Shared.csproj" />
+<ProjectReference Include="..\..\nucleo\Synergos.Core\Synergos.Core.csproj" />
+<ProjectReference Include="..\..\nucleo\Synergos.Shared\Synergos.Shared.csproj" />
 ```
+
+(Las rutas relativas desde `backend/capacidades/Synergos.Api.X/`; copiarlas de una capacidad
+vecina, que es lo que las mantiene al día.)
 
 Cualquier otra referencia rompe `BackendSegregationTests`.
 
@@ -161,7 +181,9 @@ lee.** Ni un `JOIN`, ni un fichero compartido.
 
 ## 5. Los tests que la capacidad ship con ella
 
-En `Synergos.CMS.Tests/Api/XRulesTests.cs` y `XServiceTests.cs`. Los cuatro casos
+En `backend/Synergos.Servicios.Tests/Api/XRulesTests.cs` y `XServiceTests.cs` — la suite del
+árbol de servicios, que **no ve el CMS** (`CLAUDE.md` §0.A.9, #135). Los gates del molde y de la
+segregación (`ApiMoldTests`, `BackendSegregationTests`) viven en `Synergos.Arquitectura.Tests`. Los cuatro casos
 canónicos de ADR 0075 (empty / happy / filter / idempotent) **más** lo propio de
 la capacidad. Y dos cosas que en este árbol no son opcionales:
 
@@ -171,23 +193,26 @@ la capacidad. Y dos cosas que en este árbol no son opcionales:
    defectos más caros de este repo los encontró un proceso vivo, no un test —
    porque los tests codificaban la misma suposición equivocada que el código.
 
-Agregá el `ProjectReference` a `Synergos.CMS.Tests.csproj` (es el único proyecto
-exento del gate CMS ⊥ API: probar la separación exige ver los dos lados).
+Agregá el `ProjectReference` a `backend/Synergos.Servicios.Tests/Synergos.Servicios.Tests.csproj`.
+**No** a `Synergos.CMS.Tests`: esa suite referencia sólo `Synergos.CMS.Web`, y que no pueda tocar
+una capacidad lo impone el compilador. La única que ve los dos árboles es
+`Synergos.Arquitectura.Tests`, y por eso está aparte.
 
 ---
 
 ## 6. Antes de dar por cerrado
 
 ```bash
-dotnet build Synergos.CMS.sln -v quiet                       # 0 errores CS
-dotnet test  Synergos.CMS.Tests/Synergos.CMS.Tests.csproj \
-  --filter "FullyQualifiedName~Architecture"                 # molde + segregación
-dotnet test  Synergos.CMS.sln -v quiet                       # la suite
+dotnet build Synergos.CMS.sln -v quiet                                        # 0 errores CS
+dotnet test  backend/Synergos.Servicios.Tests/Synergos.Servicios.Tests.csproj  # las capacidades
+dotnet test  Synergos.Arquitectura.Tests/Synergos.Arquitectura.Tests.csproj    # molde + segregación
+dotnet test  Synergos.CMS.sln -v quiet                                        # todas las suites
 ```
 
 Checklist:
 
 - [ ] Pasó el filtro de atomicidad, y está escrito por qué
+- [ ] Buscado el doble local en el CMS (§0.1); si existe, la elección está en el ticket, no tomada
 - [ ] Cuatro carpetas, dos referencias de proyecto
 - [ ] Todo bajo `/v1/`, sin `MapPut`/`MapPatch`, ruteo solo en `Endpoints/`
 - [ ] `UseSharedKeyAuth` + `/health`
@@ -196,4 +221,4 @@ Checklist:
 - [ ] Listados con filtro obligatorio
 - [ ] Cero ramificación sobre `Ref.Kind`, cero sustantivos de negocio
 - [ ] Tests + **mutación de cada uno**
-- [ ] `Synergos.CMS.sln` actualizado y `CLAUDE.md` §2 y §11 al día
+- [ ] `Synergos.CMS.sln` y `Synergos.Apis.sln` actualizados, y `CLAUDE.md` §2 y §11 al día

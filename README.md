@@ -33,6 +33,7 @@ lo contiene.
 | `skills/synergos-guardrails/references/entorno.md` | las variables con las que una skill resuelve rutas y URL sin cablear las de una máquina |
 | `tools/criterios.mjs` | el medidor de los cuatro criterios de rechazo del #141 |
 | `tests/estructura.test.mjs` | los tests de estructura (`node:test`, sin dependencias) |
+| `tests/adrs-citadas.test.mjs` | que toda ADR que una skill cita exista en el CMS, y que el estado que le atribuye (Aceptada/Propuesta) sea el de su fichero |
 | `.github/workflows/estructura.yml` | el CI: autoprueba, medidor y tests, en Ubuntu y Windows |
 
 ## Instalarlo
@@ -109,6 +110,7 @@ Cada repo de código tiene en su raíz un `arnes.lock.json`, **idéntico en los 
 node tools/criterios.mjs --autoprueba     # el medidor contra sus propios fixtures
 node tools/criterios.mjs                  # sobre skills/, contra los dos repos hermanos
 node --test tests/estructura.test.mjs     # la forma del plugin
+node --test tests/adrs-citadas.test.mjs   # las ADR citadas existen y su estado es el del disco
 claude plugin validate .                  # el validador oficial del marketplace y el plugin
 ```
 
@@ -119,7 +121,11 @@ El medidor busca los dos repos en `--cms-path=` / `--ui-path=`, en `SYNERGOS_CMS
 ## Lo que este repo todavía no hace
 
 - **El gate del arnés (#142)** —que lo que una skill afirma siga siendo cierto, y que el lock de
-  cada consumidor resuelva contra el remoto— no está acá todavía. El CI de este repo comprueba la
+  cada consumidor resuelva contra el remoto— no está acá todavía, salvo **un diente**:
+  `tests/adrs-citadas.test.mjs` (#172) comprueba las ADR que las skills citan y el estado que les
+  atribuyen. Se pone rojo si el CMS clonado no tiene una ADR que una skill enseña —el CMS que la
+  trae se mergea antes— y el día que una ADR propuesta se acepta, en cada línea que la siga
+  llamando propuesta. El CI de este repo comprueba la
   **forma**; no confíes en él para la deriva.
 - **Decisión pendiente del arquitecto:** la mayoría de las skills fijan `model:` en su
   frontmatter a un modelo concreto. Un modelo fijado puede no estar disponible en la instalación

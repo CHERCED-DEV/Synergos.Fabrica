@@ -72,3 +72,12 @@ jobs:
         env:
           SYNERGOS_CMS_PATH: ${{ github.workspace }}/_hermanos/Synergos.CMS
           SYNERGOS_UI_PATH: ${{ github.workspace }}/_hermanos/Synergos.UI
+
+      # Las ADR que citan las skills existen en el CMS clonado y su estado es el del fichero (#172).
+      # Rojo si el CMS publicado todavía no tiene una ADR que una skill enseña: es el orden de merge
+      # dicho como gate — el CMS que trae la ADR entra antes que el arnés que la enseña.
+      - name: ADRs citadas por las skills
+        run: node --test tests/adrs-citadas.test.mjs
+        env:
+          SYNERGOS_CMS_PATH: ${{ github.workspace }}/_hermanos/Synergos.CMS
+          SYNERGOS_UI_PATH: ${{ github.workspace }}/_hermanos/Synergos.UI

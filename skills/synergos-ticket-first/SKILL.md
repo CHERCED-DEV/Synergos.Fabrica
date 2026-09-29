@@ -78,7 +78,7 @@ Lo importante **no** es «qué falla» — eso se ve. Es:
 4. **¿Cómo sabemos que quedó bien?** Criterios de aceptación **y la mutación que pone cada uno
    en rojo**.
 
-Más una que decide dónde va: **¿cuántos de los nueve dominios lo consumen?** 5+ ⇒ se construye
+Más una que decide dónde va: **¿cuántos de los dominios lo consumen?** 5+ ⇒ se construye
 una vez, en la épica de Plataforma. 1 ⇒ casi siempre es feature de su BFF.
 
 ### 🔧 Mejora
@@ -106,7 +106,7 @@ Dos escrituras obligatorias, **en el mismo commit** que las enseñó:
    peor que uno corto: el siguiente agente propone lo que ya existe o da por hecho lo que no.
 
 > Evidencia de que hace falta: `CLAUDE.md` llegó a tener **cero menciones** al árbol de servicios
-> —20 capacidades, `Bff.Core`, dos orquestadores— y a declarar 976 tests cuando había 1978.
+> —entonces «20 capacidades, `Bff.Core`, dos orquestadores»— y a declarar «976 tests» cuando había 1978.
 
 ---
 
@@ -138,14 +138,14 @@ aparezca después tenga su propia cola.
 ## 5. Los tres árboles
 
 El proceso es el mismo en **Synergos.CMS** (Umbraco), en el **árbol de servicios**
-(`Synergos.Api.*` / `Synergos.Bff.*`) y en **Synergos.UI** (Angular/NX). Lo que cambia por repo
+(`Synergos.Api.*` / `Synergos.Bff.*`) y en **Synergos.UI** (Angular y Preact). Lo que cambia por repo
 es la definición de hecho:
 
 | Árbol | Además de tests y mutación |
 |---|---|
 | CMS | `node tools/usync-audit.mjs` si toca schema · verificación en navegador |
 | Servicios | gates de arquitectura · **procesos reales** si cruza servicios |
-| UI | contratos ↔ registry · 7 temas por siteRoot · sin overflow a 375px |
+| UI | contratos ↔ registry · todos los temas por siteRoot · sin overflow a 375px |
 
 Cada repo tiene su propio `.github/ISSUE_TEMPLATE/` y su gate: las plantillas de GitHub no se
 comparten entre repositorios.

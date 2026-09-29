@@ -1,4 +1,4 @@
-# App Bootstrap Recipes — 5 verticales SYNERGOS
+# App Bootstrap Recipes — recetas por vertical SYNERGOS
 
 > **Premisa polimórfica**: SYNERGOS es plataforma multi-vertical. Un código,
 > un CMS, el catálogo de bundles UI = N productos distintos. Las recetas no cambian
@@ -320,7 +320,7 @@ Healthcare necesita blocks nuevos que NO existen como `elementSyn*`:
 - `elementSynAppointmentScheduler` — calendario + slots disponibles
 - `elementSynPatientRecordHeader` — paciente info + identificadores
 
-**Acción**: cuando llegue un cliente healthcare real, scaffold estos elementos con `npx nx generate` siguiendo el pattern de los 122 existentes.
+**Acción**: cuando llegue un cliente healthcare real, crear estos elementos con la forma de un elemento vivo (`synergos-cms-author` §6) y publicarlos (`synergos-cdn-build`).
 
 ### Compliance settings críticos
 
@@ -346,7 +346,7 @@ Ejemplo:
 - `tienda-mode.com` → siteRoot "Tienda Mode" (Receta 2)
 - `consultora-leyes.com` → siteRoot "Consultora Leyes" (Receta 1)
 
-**Todo en el mismo proyecto Synergos.CMS** + mismo `C:\LOCAL_CDN`. La diferencia es el content tree per cliente.
+**Todo en el mismo proyecto Synergos.CMS** + mismo CDN. La diferencia es el content tree per cliente.
 
 ## Cómo usar estas recetas
 

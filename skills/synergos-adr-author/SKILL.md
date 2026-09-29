@@ -6,7 +6,7 @@ model: claude-opus-4-8
 
 # SYNERGOS ADR Author — registrar decisiones arquitectónicas
 
-Los ADRs son la memoria del proyecto. Con 107 escritos, el formato y la numeración deben ser consistentes: un ADR que no encaja obliga al siguiente lector a preguntarse si el proyecto cambió de convención o si alguien se equivocó.
+Los ADRs son la memoria del proyecto. Con tantos escritos, el formato y la numeración deben ser consistentes: un ADR que no encaja obliga al siguiente lector a preguntarse si el proyecto cambió de convención o si alguien se equivocó.
 
 ---
 
@@ -77,9 +77,15 @@ El siguiente es ese +1, con 4 dígitos. El **slug del archivo va en inglés** (`
 ## References
 ```
 
-**Marcadores exactos** (107 ADRs los usan; **cero** usan `**Estado:**` / `## Contexto`):
-`- **Status:**` · `- **Date:**` · `- **Deciders:**` · `- **Relacionados:**` · `## Context` ·
-`## Decision` · `## Consequences` · `## Alternatives considered` · `## References`
+**Marcadores: los del ADR más reciente** (el `head -12` de arriba), no los de esta skill. Ya
+cambiaron una vez: los anteriores usan `- **Status:**` · `- **Date:**` · `- **Deciders:**` ·
+`- **Relacionados:**` · `## Context` · `## Decision` · `## Consequences` ·
+`## Alternatives considered` · `## References` —la plantilla de arriba— y los más recientes
+`- **Estado:**` · `- **Fecha:**` · `## Contexto` · …. Cuántos usa cada formato se mide:
+
+```bash
+grep -L -- '- \*\*Status:\*\*' Synergos.CMS/Synergos.CMS.Web/docs/adr/[0-9]*.md   # los que NO usan el formato en inglés
+```
 
 **No hay campo `Ola:`.** El contexto de la ola va dentro de `Deciders:` o de `Context`.
 

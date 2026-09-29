@@ -1,11 +1,16 @@
 # CMS Schema ↔ UI Bundle — Mapping table
 
-> **AUTO-GENERATED** by `tools/refresh-skill-catalog.mjs`. Re-run via `npm run skill:refresh`.
+> **FOTO del 2026-09-05 — no se regenera.** La producía `tools/refresh-skill-catalog.mjs` de la UI,
+> que se borró en el #141 (no lo llamaba nadie); lo reemplaza el MCP `synergos-catalogo` del #143.
+> Sirve para ver cómo se empalma un alias del CMS con su tag y su bundle, no para saber qué hay hoy. **La lista viva:** `npm run catalog` en
+> `Synergos.UI` (genera `catalog.html` desde `vitals/contracts/src/element-registry.json`,
+> `element-inputs.json` y el `registry.json` publicado), y lo publicado, en `$CDN_ROOT/registry.json`.
+> Una cifra de esta foto no se cita: se cuenta en esas fuentes.
 >
 > Esta tabla cierra el loop entre el schema CMS uSync (lo que el editor llena
 > en backoffice) y el bundle UI que efectivamente hidrata en el browser.
 >
-> Generated: 2026-09-05T23:25:46.043Z
+> Foto tomada el 2026-09-05T23:25:46.043Z.
 
 ## Pipeline editor → bundle
 

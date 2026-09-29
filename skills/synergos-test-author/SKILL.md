@@ -297,7 +297,9 @@ var optionsMonitor = Substitute.For<IOptionsMonitor<BundleRegistrySettings>>();
 optionsMonitor.CurrentValue.Returns(new BundleRegistrySettings
 {
     Mode        = "FileSystem",
-    LocalPath   = @"C:\LOCAL_CDN",
+    // Un directorio del propio test, nunca la ruta de una máquina: el #132 encontró los tests del
+    // probe usando una como literal de fixture, o sea el defecto escrito como si fuera lo normal.
+    LocalPath   = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")),
     RegistryFileName = "registry.json"
 });
 

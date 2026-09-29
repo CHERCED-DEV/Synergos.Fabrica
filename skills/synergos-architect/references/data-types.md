@@ -41,7 +41,7 @@ Fuente autoritaria: ADR 0021 + memoria `feedback_picker_semantics`.
 | Fecha + hora | `DatePickerWithTime` | `DataTypes/DatePickerWithTime.config` | UTC para visibilityMode=scheduled (compAlex). |
 | Pick a content node (referencia interna) | `ContentPicker` | `DataTypes/ContentPicker.config` | Para single-node refs. Para URL preferir MultiURLPicker. |
 | Pick a member | `MemberPicker` | `DataTypes/MemberPicker.config` | |
-| Block List items (FAQ, testimonios, gallery, timeline, banner slides, features, form fields, nav items, tabs, logos, CTA items) | `DTBlockList*` | `DataTypes/DTBlockList*.config` | 12 list types curados. Reusa el que aplique. |
+| Block List items (FAQ, testimonios, gallery, timeline, banner slides, features, form fields, nav items, tabs, logos, CTA items) | `DTBlockList*` | `DataTypes/DTBlockList*.config` | Los curados son los `DTBlockList*.config` de uSync. Reusa el que aplique. |
 | Block Grid (sections de página) | `DTBlockGridSections` | (DataType) | Solo páginas usan esto para `sections`. |
 | Label readonly (display-only computed) | `Label*` (LabelString, LabelInteger, LabelBigint, LabelDecimal, LabelDatetime, LabelTime) | `DataTypes/Label*.config` | Para mostrar valor sin permitir editar. |
 
@@ -85,7 +85,7 @@ Ejemplos malos:
 
 ## Iconos
 
-Si el DataType tiene icon prop o el field requiere asociar un icono, **verifica en `~/.claude/projects/c--Users-HITMA-Desktop-synergos/memory/reference_umbraco13_icons.txt`** antes de sugerir.
+Si el DataType tiene icon prop o el field requiere asociar un icono, **verifica en `tools/umbraco13-icons-stock.txt` del CMS** (el stock de Umbraco 13) antes de sugerir.
 
 ## Cuando proponer DataType nuevo
 

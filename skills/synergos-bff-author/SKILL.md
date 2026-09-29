@@ -1,6 +1,6 @@
 ---
 name: synergos-bff-author
-description: Construye un orquestador de dominio (Synergos.Bff.*) sobre la máquina de sagas de Synergos.Bff.Core. Cubre lo único que un BFF aporta y ninguna capacidad puede aportar — el ORDEN de los pasos y la COMPENSACIÓN — más las trampas que ya costaron caro: la compensación que cambia de carácter al capturar o consumir, cerrar puertas demasiado pronto, y confundir una compensación ARMADA con una PENDIENTE. Invocar al arrancar cualquiera de los seis orquestadores que faltan (Viajes, Eventos, Realty, Gobierno, Academy, Social) o al tocar un flujo de Salud o Tienda.
+description: Construye un orquestador de dominio (Synergos.Bff.*) sobre la máquina de sagas de Synergos.Bff.Core. Cubre lo único que un BFF aporta y ninguna capacidad puede aportar — el ORDEN de los pasos y la COMPENSACIÓN — más las trampas que ya costaron caro: la compensación que cambia de carácter al capturar o consumir, cerrar puertas demasiado pronto, y confundir una compensación ARMADA con una PENDIENTE. Invocar al arrancar un orquestador nuevo o al tocar el flujo de uno existente (los que hay son los directorios de backend/orquestadores/ del CMS).
 ---
 
 # SYNERGOS BFF Author — escribir un orquestador de dominio

@@ -71,7 +71,7 @@ El alcance debe responder:
 
 ### Bundles CDN
 - [ ] registry.json actualizado
-- [ ] LOCAL_CDN/{name}/angular/0.1.0/main.js publicado
+- [ ] `$CDN_ROOT/{name}/angular/latest/main.js` publicado (`synergos-cdn-build`)
 
 ### Contenido editorial
 - [ ] {Tipo de contenido}: {descripción de los nodos a crear}
@@ -94,20 +94,21 @@ GUIDs que NO deben reutilizarse, etc.}
 Verificar el estado del stack antes de empezar:
 
 ```powershell
-# Ping CMS
+# $cms, $cdnRoot, $base, $backups: synergos-guardrails/references/entorno.md
+# CMS — /_health: 200 y 503 son los dos un proceso arriba (503 = alguna probe en rojo)
 $cmsOk = $false
 try {
-    Invoke-WebRequest "http://synergos.local:5000/umbraco/api/keepalive/ping" `
-        -UseBasicParsing -TimeoutSec 5 | Out-Null
+    Invoke-WebRequest "$base/_health" -UseBasicParsing -TimeoutSec 5 | Out-Null
     $cmsOk = $true
     Write-Output "CMS: OK"
 } catch {
-    Write-Warning "CMS: NO responde — ejecutar synergos-run-dev antes de empezar"
+    if ($_.Exception.Response) { $cmsOk = $true; Write-Warning "CMS: arriba, con alguna probe en rojo (synergos-health-check)" }
+    else { Write-Warning "CMS: NO responde — ejecutar synergos-run-dev antes de empezar" }
 }
 
 # Registry
 try {
-    $reg   = Get-Content "C:\LOCAL_CDN\synergos\registry.json" | ConvertFrom-Json
+    $reg   = Get-Content (Join-Path $cdnRoot "registry.json") -Raw | ConvertFrom-Json
     $count = @($reg.elements).Count
     Write-Output "Bundle registry: OK — $count elementos"
 } catch {
@@ -115,7 +116,7 @@ try {
 }
 
 # DB
-$dbPath = "Synergos.CMS\Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
+$dbPath = Join-Path $cms "Synergos.CMS.Web\umbraco\Data\Umbraco.sqlite.db"
 if (Test-Path $dbPath) {
     $sizeMB = [Math]::Round((Get-Item $dbPath).Length / 1MB, 2)
     Write-Output "DB: OK — $sizeMB MB"
@@ -129,9 +130,10 @@ if (Test-Path $dbPath) {
 ## 4. Backup de apertura
 
 ```powershell
-$backupDir  = "C:\Users\HITMA\Desktop\synergos-backups"
+$backupDir  = $backups   # $SYNERGOS_BACKUP_DIR — fuera del repo
 $timestamp  = Get-Date -Format "yyyyMMdd-HHmmss"
-$backupPath = "$backupDir\Umbraco-ola-open-$olaId-$timestamp.sqlite.db"
+if (-not $backupDir) { Write-Error "Definí SYNERGOS_BACKUP_DIR (fuera del repo)."; exit 1 }
+$backupPath = Join-Path $backupDir "Umbraco-ola-open-$olaId-$timestamp.sqlite.db"
 
 if (-not (Test-Path $backupDir)) { New-Item -ItemType Directory $backupDir | Out-Null }
 
@@ -151,15 +153,15 @@ if (Test-Path $dbPath) {
 Antes de hacer cualquier cambio, registrar el estado inicial:
 
 ```powershell
-$uSyncCT = "Synergos.CMS\Synergos.CMS.Web\uSync\v9\ContentTypes"
-$uSyncDT = "Synergos.CMS\Synergos.CMS.Web\uSync\v9\DataTypes"
+$uSyncCT = Join-Path $cms "Synergos.CMS.Web\uSync\v9\ContentTypes"
+$uSyncDT = Join-Path $cms "Synergos.CMS.Web\uSync\v9\DataTypes"
 
 # Contar elementos actuales
 $elementCount   = (Get-ChildItem $uSyncCT -Filter "elementSyn*.config" -Recurse).Count
 $compCount      = (Get-ChildItem $uSyncCT -Filter "comp*.config" -Recurse).Count
 $dtCount        = (Get-ChildItem $uSyncDT -Filter "*.config" -Recurse).Count
 $ctTotal        = (Get-ChildItem $uSyncCT -Filter "*.config" -Recurse).Count
-$bundleCount    = try { @((Get-Content "C:\LOCAL_CDN\synergos\registry.json" | ConvertFrom-Json).elements).Count } catch { 0 }
+$bundleCount    = try { @((Get-Content (Join-Path $cdnRoot "registry.json") -Raw | ConvertFrom-Json).elements).Count } catch { 0 }
 
 Write-Output ""
 Write-Output "══════════════════════════════════════════════"
@@ -252,7 +254,7 @@ Estado inicial:
 | GUIDs | Quad-check obligatorio antes de asignar cualquier GUID nuevo |
 | Commits | Atómicos por tipo de archivo (XMLs separados de C#, separados de Razor) |
 | DB | No se commitea (`Umbraco.sqlite.db` en .gitignore) |
-| Backups | En `C:\Users\HITMA\Desktop\synergos-backups\` — fuera del repo |
+| Backups | En `$SYNERGOS_BACKUP_DIR` — fuera del repo |
 | Encoding | UTF-8 sin BOM para todos los XMLs |
 | IsElement | Inmutable post-creación — planificar antes de crear |
 | Storage type | Key nueva si cambia el Type de un DataType existente |

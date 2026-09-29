@@ -23,10 +23,10 @@ como el fix.
 
 ## 0. Prerrequisitos
 
-- Repo backend: `C:\Users\HITMA\Desktop\synergos\Synergos.CMS\Synergos.CMS.Web\`.
-- Repo UI: `C:\Users\HITMA\Desktop\synergos\Synergos.UI\platforms\angular\apps\elements\modules\<app>\`.
-- Para verificar vía HTTP el CMS debe estar corriendo en
-  `http://synergos.local:5000` (usa **synergos-run-dev** si no lo está).
+- Repo backend: `$cms/Synergos.CMS.Web/`; repo UI: `$ui/platforms/angular/apps/elements/modules/<app>/`
+  (`synergos-guardrails/references/entorno.md` resuelve `$cms`, `$ui` y `$base`).
+- Para verificar vía HTTP el CMS debe estar corriendo en `$base` (usa **synergos-run-dev** si no
+  lo está).
 - Contratos canónicos: `Synergos.CMS.Web/docs/contracts/` (README + dom-events +
   css-tokens + i18n-bridge + host-bridge). ADR: `docs/adr/0083-cms-ui-alignment-via-contracts.md`.
 - Memoria relacionada: `feedback_cms_ui_contracts_alignment` (naming canónico +
@@ -172,10 +172,10 @@ Principios (todos verificables en `EventosController.cs` / `RealtyController.cs`
 6. **Grafo de dependencias.** El reshape vive en la capa **Web** (controller). No
    metas `Umbraco.Cms.*` ni lógica de presentación en `Application` (ADR 0002).
 
-Build de verificación (desde `C:\Users\HITMA\Desktop\synergos`):
+Build de verificación (desde el clon del CMS, `$cms`):
 
 ```powershell
-dotnet build Synergos.CMS\Synergos.CMS.Web\Synergos.CMS.Web.csproj -v quiet --no-dependencies
+dotnet build Synergos.CMS.Web\Synergos.CMS.Web.csproj -v quiet --no-dependencies
 # Esperar 0 errores CS. Los MSB3021 (file-lock) son esperados si el Web corre.
 ```
 
@@ -185,17 +185,17 @@ dotnet build Synergos.CMS\Synergos.CMS.Web\Synergos.CMS.Web.csproj -v quiet --no
 
 ```powershell
 # La forma cruda del endpoint (confirma que la clave canónica sale):
-curl.exe -s "http://synergos.local:5000/api/eventos/event/EVT-1" | ConvertFrom-Json | ConvertTo-Json -Depth 6
+curl.exe -s "$base/api/eventos/event/EVT-1" | ConvertFrom-Json | ConvertTo-Json -Depth 6
 
 # Confirmar una clave puntual (ej. que 'seatmap' minúscula existe y 'fromAmount' viene):
-curl.exe -s "http://synergos.local:5000/api/eventos/events?q=" |
+curl.exe -s "$base/api/eventos/events?q=" |
   Select-String -Pattern '"fromAmount"','"startsAt"','"cover"' -AllMatches
 ```
 
 Bash equivalente (agente):
 
 ```bash
-curl -s "http://synergos.local:5000/api/eventos/event/EVT-1" | python -m json.tool | head -60
+curl -s "$base/api/eventos/event/EVT-1" | python -m json.tool | head -60
 ```
 
 **Scan de leaks** — que el DTO no filtre campos internos/dominio no contratados
@@ -212,7 +212,7 @@ la consola: el cliente loguea `Eventos API "<endpoint>" unavailable — using mo
 data.` cuando cae al fallback; si ves ese warn, el endpoint no respondió y estás
 viendo mock, no tu fix.
 
-> Recuerda verificar en los 7 temas por-siteRoot si el drift afecta algo visual
+> Recuerda verificar en todos los temas por-siteRoot si el drift afecta algo visual
 > (ver `feedback_verify_all_siteroot_themes`).
 
 ## 6. Qué NO hacer

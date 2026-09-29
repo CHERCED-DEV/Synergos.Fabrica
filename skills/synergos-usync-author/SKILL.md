@@ -130,7 +130,7 @@ function Assert-GuidFresh {
         return $false
     }
 
-    Write-Output "GUID '$Guid' es fresco — 0 colisiones en 4 checks."
+    Write-Output "GUID '$Guid' es fresco — sin colisiones en ninguno de los chequeos."
     return $true
 }
 

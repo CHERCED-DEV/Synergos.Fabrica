@@ -56,9 +56,9 @@ El bloque emite HTML mínimo en el server (un `<synergos-{kebab}>` con atributos
 - Si el arquitecto va a crear contenido con `elementSyn*` ahora, **adviértele** que el bloque va a aparecer como placeholder hasta que CDN team publique. El contenido editorial dentro del block (datos, copy) es válido y se preserva.
 - Si la pieza requiere render visible YA y no puede esperar, pregúntale si hay un equivalente SSR puro (`element*` no-Syn) que cubra el caso temporalmente.
 
-## Los 5 contratos CMS↔UI
+## Los contratos CMS↔UI
 
-Si la pieza toca el bridge UI, considera los 5 contratos en `Synergos.CMS/Synergos.CMS.Web/docs/contracts/`:
+Si la pieza toca el bridge UI, considera los contratos en `Synergos.CMS/Synergos.CMS.Web/docs/contracts/`:
 
 | # | Doc | Cuándo importa para autoría |
 |---|---|---|

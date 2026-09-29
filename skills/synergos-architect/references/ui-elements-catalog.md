@@ -1,12 +1,15 @@
-# UI Elements Catalog — 122 bundles publicados al CDN
+# UI Elements Catalog — foto de los bundles publicados al CDN
 
-> **AUTO-GENERATED** by `tools/refresh-skill-catalog.mjs`. Re-run via `npm run skill:refresh`
-> o automáticamente al final de `npm run release:angular`. Edits manuales se pierden.
+> **FOTO del 2026-09-05 — no se regenera.** La producía `tools/refresh-skill-catalog.mjs` de la UI,
+> que se borró en el #141 (no lo llamaba nadie); lo reemplaza el MCP `synergos-catalogo` del #143.
+> Sirve para leer la forma de los inputs de un elemento, no para saber qué hay hoy. **La lista viva:** `npm run catalog` en
+> `Synergos.UI` (genera `catalog.html` desde `vitals/contracts/src/element-registry.json`,
+> `element-inputs.json` y el `registry.json` publicado), y lo publicado, en `$CDN_ROOT/registry.json`.
+> Una cifra de esta foto no se cita: se cuenta en esas fuentes.
 >
-> Snapshot del CDN registry (`C:\LOCAL_CDN\synergos\registry.json`) + UI contracts
-> (`vitals/contracts/src/{element-config,elements-syn,element-inputs}`).
->
-> Generated: 2026-09-05T23:25:46.040Z
+> Foto del registry del CDN + los contratos de la UI
+> (`vitals/contracts/src/{element-config,elements-syn,element-inputs}`), tomada el
+> 2026-09-05T23:25:46.040Z. Ya entonces su título decía una cuenta y sus secciones sumaban otra.
 
 ## Cómo leer este catálogo
 
@@ -30,7 +33,7 @@ Cuando recomendes un elemento, **siempre** mencioná: tier, tag DOM, y la
 shape que el bundle espera (rich si existe, schema si no).
 
 
-## Primitives (31)
+## Primitives
 
 **Primitives** — atómicos, sin lógica de negocio. Building blocks reutilizables (avatar, badge, divider, etc.). Pueden vivir solos o composarse.
 
@@ -619,7 +622,7 @@ shape que el bundle espera (rich si existe, schema si no).
   - `loop` (boolean) — Loops playback continuously
 
 
-## Compositions (46)
+## Compositions
 
 **Compositions** — combinan 2+ primitives + lógica simple. Self-contained editorial pieces (accordion, dropdown, search-box, etc.). Hidratan en cliente.
 
@@ -1581,7 +1584,7 @@ shape que el bundle espera (rich si existe, schema si no).
   - `variantKey` (string) — CMS compatibility alias for the visual variant key.
 
 
-## Modules (53)
+## Modules
 
 **Modules** — features ricas con state propio + posiblemente fetch (carousel, hero, comments-widget, etc.). Self-contained but heavier.
 
@@ -2703,8 +2706,8 @@ shape que el bundle espera (rich si existe, schema si no).
 Cuando un ContentType (e.g. `elementSynHero`) renderiza, el partial Razor en
 `Views/Partials/SynHost/{Block}.cshtml` invoca `ISynHostEmitter.EmitAsync` que:
 
-1. Resuelve el bundle vía `IBundleRegistryClient` (default `FileSystemBundleRegistryClient`
-   leyendo `C:\LOCAL_CDN\synergos\registry.json`).
+1. Resuelve el bundle vía `IBundleRegistryClient` (en Development, `FileSystemBundleRegistryClient`
+   leyendo el `registry.json` de `Synergos:BundleRegistry:LocalPath`).
 2. Emite `<script type="module" defer src="/cdn-bundles/{name}/{framework}/{slot}/main.js"
    integrity="sha384-..." crossorigin="anonymous"></script>`.
 3. Emite `<synergos-{name} config='{...JSON con culture+props+overrides}'></synergos-{name}>`.
@@ -2715,11 +2718,11 @@ Cuando un ContentType (e.g. `elementSynHero`) renderiza, el partial Razor en
 
 - **Rich shape (`element-config.contract.ts`)**: editar a mano. Es el contract
   canónico para los Web Components que evolucionaron a tener config editorial
-  rico (translations, semantic fields, etc.). 64 elements actualmente.
+  rico (translations, semantic fields, etc.). Cuántos: las interfaces de ese fichero.
 - **Schema mirror (`elements-syn.contract.ts`)**: NO editar. Auto-regenerado
-  por `tools/cms-sync.mjs` cada vez que cambia el schema uSync del CMS. 71
-  interfaces `Syn{Pascal}Schema`.
+  por `tools/cms-sync.mjs` cada vez que cambia el schema uSync del CMS: una interfaz
+  `Syn{Pascal}Schema` por `elementSyn*`.
 - **Inputs JSON (`element-inputs.json`)**: editar manualmente para enriquecer
   las declaraciones públicas de cada Custom Element (default values, descriptions
   para editor docs). Es leído por el audit `element-contract-audit.mjs`.
-- **Este catálogo**: NO editar — auto-regenerado.
+- **Este catálogo**: es una foto; no se regenera (ver la cabecera).

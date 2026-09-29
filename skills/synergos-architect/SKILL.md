@@ -1,6 +1,6 @@
 ---
 name: synergos-architect
-description: Arquitecto SYNERGOS — bootstrap completo + autoría editorial + empalme UI. Activar cuando el arquitecto (a) está creando o editando contenido (páginas, secciones, cards, CTAs, alertas globales, navegación), (b) está draftando copy (títulos, descripciones, CTA labels), (c) está decidiendo qué composition/block/element usar y qué DataType aplica por campo, (d) está armando un aplicativo desde 0 (vertical profesional / e-commerce / marca / membership / healthcare / multi-dominio), o (e) preguntando qué bundle UI consume cierto schema CMS. Sugiere piezas concretas del schema vivo, las mappea a bundles UI publicados, justifica con principios y ADRs del proyecto, y entrega backoffice steps + drafts de copy listos para pegar. Lee `Synergos.CMS/Synergos.CMS.Web/uSync/v9/` (schema CMS) + `references/ui-elements-catalog.md` (el catálogo de bundles UI) + `references/cms-to-ui-mapping.md` (mapeo schema↔bundle) + `references/app-bootstrap-recipes.md` (5 verticales) como fuentes de verdad.
+description: Arquitecto SYNERGOS — bootstrap completo + autoría editorial + empalme UI. Activar cuando el arquitecto (a) está creando o editando contenido (páginas, secciones, cards, CTAs, alertas globales, navegación), (b) está draftando copy (títulos, descripciones, CTA labels), (c) está decidiendo qué composition/block/element usar y qué DataType aplica por campo, (d) está armando un aplicativo desde 0 (vertical profesional / e-commerce / marca / membership / healthcare / multi-dominio), o (e) preguntando qué bundle UI consume cierto schema CMS. Sugiere piezas concretas del schema vivo, las mappea a bundles UI publicados, justifica con principios y ADRs del proyecto, y entrega backoffice steps + drafts de copy listos para pegar. Lee `Synergos.CMS/Synergos.CMS.Web/uSync/v9/` (schema CMS, la fuente de verdad) + `references/ui-elements-catalog.md` y `references/cms-to-ui-mapping.md` (fotos del catálogo de bundles UI y del mapeo schema↔bundle; la lista viva la da npm run catalog en la UI) + `references/app-bootstrap-recipes.md` (recetas por vertical).
 ---
 
 # SYNERGOS Architect — bootstrap + content authoring + UI bridge
@@ -22,7 +22,7 @@ Eres el copiloto del arquitecto cuando autora contenido editorial en el backoffi
 - **Variations Culture por default**: campos de texto/copy son Culture-variant salvo prueba en contrario. Nothing solo para datos genuinamente compartidos (flags globales, timestamps, identifiers técnicos).
 - **Pickers por intent** (ADR 0021): URL → MultiUrlPicker; media → MediaPicker3; enum → Dropdown.Flexible; bool → TrueFalse. Nunca TextBox para datos con semántica de tipo. Detalle en `references/data-types.md`.
 - **Descripciones del schema ≤120 chars** editor-facing. 1 frase, sin jargon ADR ni nombres internos. Las descripciones SON UI del backoffice.
-- **Iconos Umbraco**: nunca inventar. Verificar contra `~/.claude/projects/c--Users-HITMA-Desktop-synergos/memory/reference_umbraco13_icons.txt` antes de sugerir un icono.
+- **Iconos Umbraco**: nunca inventar. Verificar contra `tools/umbraco13-icons-stock.txt` del CMS (el stock de Umbraco 13, que `node tools/usync-audit.mjs` cruza con cada `<Icon>`) antes de sugerir un icono.
 - **Compositions reservadas**: si una composition tiene `<Description>` que arranca con `[Bloqueado externamente - ...]` o `[Disponible — sin consumers actuales]`, es scaffolding tracked. No es orphan ni se debe proponer borrar; tampoco usar como "general purpose" sin entender por qué está reservada.
 - **Backoffice instructions neutrales**: describe intención + metadatos ("crear nodo de tipo X bajo el padre Y, con propiedad Z = ..."), no path UI exacto. El UI cambia entre minor versions de Umbraco.
 
@@ -183,9 +183,10 @@ Para cada página de la receta, citar:
 
 ### Paso 5.6 — Empalme UI: confirmar bundles publicados
 
-Para cada `elementSyn*` recomendado, verificar en `references/ui-elements-catalog.md`:
-- ¿El bundle está publicado al CDN? (ver `references/ui-elements-catalog.md`)
-- Si NO: marcar como **gap** — requiere scaffolding nuevo (`npx nx generate` siguiendo el pattern de los 122 existentes), publicación al CDN, y el SSR va a emitir offline fallback hasta que esté publicado.
+Para cada `elementSyn*` recomendado, verificar contra lo vivo, no contra la foto:
+- ¿Existe el elemento? → una entrada en `vitals/contracts/src/element-registry.json` de la UI (o `npm run catalog`).
+- ¿El bundle está publicado al CDN? → una entrada en `$CDN_ROOT/registry.json` (`synergos-guardrails/references/entorno.md`).
+- Si NO: marcar como **gap** — requiere una fuente nueva con la forma de un elemento vivo (`synergos-cms-author` §6), publicación al CDN (`synergos-cdn-build`), y el SSR va a emitir offline fallback hasta que esté publicado.
 - Si SÍ: citar la shape de inputs (rich `{Pascal}ElementConfig` si existe, o schema mirror `Syn{Pascal}Schema`).
 
 ### Paso 5.7 — Orden de bootstrap final
@@ -313,9 +314,9 @@ Ver receta detallada en `references/app-bootstrap-recipes.md` § Receta 1.
 - `references/naming-and-ui-bridge.md` — `elementSyn*` / `<synergos-*>` / bundle CDN
 
 ### Bootstrap + UI catalog (nuevos cap-310 architect)
-- `references/ui-elements-catalog.md` — **AUTO-GENERATED** — los bundles publicados al CDN con tier/tag/framework/shape rich + schema + inputs. Re-genera con `node Synergos.UI/tools/refresh-skill-catalog.mjs`.
-- `references/cms-to-ui-mapping.md` — **AUTO-GENERATED** — tabla 1:1 alias CMS ↔ tag DOM ↔ bundle URL ↔ shape ↔ Razor partial.
-- `references/app-bootstrap-recipes.md` — 5 verticales (profesional / e-commerce / corporate / membership / healthcare) con páginas + blocks + settings + multi-domain.
+- `references/ui-elements-catalog.md` — **FOTO** (2026-09-05) de los bundles publicados al CDN con tier/tag/framework/shape rich + schema + inputs. **No se regenera**: su generador se borró en el #141. La lista viva: `npm run catalog` en la UI.
+- `references/cms-to-ui-mapping.md` — **FOTO** (misma fecha) de la tabla alias CMS ↔ tag DOM ↔ bundle URL ↔ shape ↔ Razor partial.
+- `references/app-bootstrap-recipes.md` — recetas por vertical (profesional / e-commerce / corporate / membership / healthcare) con páginas + blocks + settings + multi-domain.
 
 ## 8. Documentos rectores del proyecto que respaldan esta skill
 
@@ -325,9 +326,9 @@ Si el arquitecto cuestiona una recomendación, estas son las fuentes:
 - `refactor-docs/architecture/00-current-state-synergos-cms.md` — estado real del refactor (§11)
 - `refactor-docs/architecture/06-composition-design-principles.md` — SOLID + filtro 3 preguntas
 - `refactor-docs/architecture/07-page-composition-standard.md` — los 4 page types y la cascada
-- `Synergos.CMS/Synergos.CMS.Web/docs/contracts/README.md` — los 5 contratos CMS↔UI
-- `Synergos.CMS/Synergos.CMS.Web/docs/adr/` — 92 ADRs ratificados (cap-310)
-- Memorias `feedback_*` en `~/.claude/projects/c--Users-HITMA-Desktop-synergos/memory/` — guardrails operativos
+- `Synergos.CMS/Synergos.CMS.Web/docs/contracts/README.md` — los contratos CMS↔UI
+- `Synergos.CMS/Synergos.CMS.Web/docs/adr/` — los ADRs ratificados (su `README.md` es el índice)
+- Memorias `feedback_*` en `Synergos.CMS/CLAUDE.md` §5 — guardrails operativos
 
 ## 9. Limites explícitos
 
@@ -335,5 +336,5 @@ Esta skill **NO**:
 - Edita schema (DocType / DataType / Dictionary nuevos) — eso es trabajo de Ola schema, no autoría. Redirigir al flow `feedback_ola_execution_flow`.
 - Edita DB ni el content tree — recomienda steps que el arquitecto ejecuta en backoffice.
 - Toca código C# / Razor / Angular — solo el schema CMS y orientación de uso.
-- Crea bundles UI nuevos — los 122 existentes son lo que hay; gaps se marcan explícitamente para cap futuro.
+- Crea bundles UI nuevos — los que existen (`npm run catalog` en la UI) son lo que hay; gaps se marcan explícitamente para cap futuro.
 - Genera ADRs — eso es arquitectura, no autoría. Ofrece fundamento citando ADRs existentes pero no los crea.

@@ -1,11 +1,12 @@
 ---
 name: synergos-capability-author
-description: Crea o modifica una capacidad agnóstica del árbol de servicios (Synergos.Api.*) siguiendo EL MOLDE — las cuatro carpetas, las cinco formas de endpoint, las siete reglas de construcción y los dos gates que lo verifican. Conoce el filtro de atomicidad (¿puede decir NO sola? ¿es dueña de su almacén?), la regla del Ref opaco, el orden idempotencia-antes-que-estado, y la disciplina de mutar cada gate. Invocar ANTES de escribir una Synergos.Api.* nueva, al agregarle endpoints a una existente, o cuando alguien propone una capacidad y hay que decidir si de verdad lo es.
+description: Crea o modifica una capacidad agnóstica del árbol de servicios (Synergos.Api.*) siguiendo EL MOLDE — las cuatro carpetas, las cinco formas de endpoint, las siete reglas de construcción y los gates que lo verifican (ApiMoldTests, BackendSegregationTests). Conoce el filtro de atomicidad (¿puede decir NO sola? ¿es dueña de su almacén?), la regla del Ref opaco, el orden idempotencia-antes-que-estado, y la disciplina de mutar cada gate. Invocar ANTES de escribir una Synergos.Api.* nueva, al agregarle endpoints a una existente, o cuando alguien propone una capacidad y hay que decidir si de verdad lo es.
 ---
 
 # SYNERGOS Capability Author — escribir una `Synergos.Api.*`
 
-Las veinte capacidades existentes son **idénticas en forma y distintas solo en
+Las capacidades existentes —un directorio cada una en `backend/capacidades/` del CMS— son
+**idénticas en forma y distintas solo en
 lógica de negocio**. Eso no es estética: es lo que permite que un agente que
 nunca vio `Api.Signing` sepa dónde está todo en treinta segundos. El molde lo
 verifica `ApiMoldTests`, y la agnosticidad `BackendSegregationTests`.
@@ -31,8 +32,8 @@ y hay que pasar las dos:
 2. **¿Es dueña de su almacén?** Si no guarda nada, **es un tipo, no un
    servicio**. `Money`, `TimeWindow` y `Ref` viven en `Synergos.Core` por esto.
 
-Un tercer filtro, práctico: **¿cuántos de los nueve dominios la usan?** El
-criterio que produjo las veinte fue el conteo de la matriz. Una capacidad con un
+Un tercer filtro, práctico: **¿cuántos de los dominios la usan?** El
+criterio que produjo las que hay fue el conteo de la matriz. Una capacidad con un
 solo consumidor casi siempre es una feature de su BFF.
 
 > Si la respuesta a alguna es «no», **decilo y parate ahí**. Proponer capacidades

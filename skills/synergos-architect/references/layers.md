@@ -33,7 +33,7 @@ Las capas son **estancas**. Una pieza vive en una sola capa; intentar "una compo
 
 **Familias dentro de comp*:**
 - `compcontent*` — propiedades editoriales (heading, media, cta, badge, metadata, text, embed, date, author, collection)
-- `compdom*` — propiedades de presentación HTML (class, variant, visibility, attributes, spacing, flex, grid, display, presetChrome). Estos son universales — los 156 element types los componen para dar al editor control fino del HTML emitido.
+- `compdom*` — propiedades de presentación HTML (class, variant, visibility, attributes, spacing, flex, grid, display, presetChrome). Estos son universales — los element types los componen para dar al editor control fino del HTML emitido.
 - `compcore*` — base/lifecycle (compcorebase, compcorelifecycle)
 - `compbehavior*` — behavioral concerns (featureFlag, tracking — bloqueado CDN)
 - `compPage*` — page-level orchestration (Theme, Orchestration, Seo, Navigation)
@@ -57,7 +57,7 @@ Las capas son **estancas**. Una pieza vive en una sola capa; intentar "una compo
 **Qué:** unidades editoriales que el editor dropea dentro de un Block Grid (sections de página) o Block List (DTBlockList* específicos como FAQ items, gallery items, etc.).
 
 **Naming:**
-- **Layout family**: `elementlayout*` (Section, Container, Stack, Grid, Column, 1Col, 2ColEven, MainSidebar, 3Col, 4Col, HolyGrail, SidebarMain, Hero, SnippetRef). 14 layout presets.
+- **Layout family**: `elementlayout*` (Section, Container, Stack, Grid, Column, 1Col, 2ColEven, MainSidebar, 3Col, 4Col, HolyGrail, SidebarMain, Hero, SnippetRef). Los vivos: `elementLayout*.config` en `uSync/v9/ContentTypes/`.
 - **Action family**: `elementaction*` (actionButton, actionCtaGroup, actionLink).
 - **Content family standalone**: `element*` no-prefijo (ej. elementCard, elementGallery, elementFAQ, elementTestimonial, elementBanner, elementTimeline, elementLogoStrip, elementFeature, elementForm, elementAccordion, elementModal, elementTabs, elementNav).
 - **CDN-hosted (bundle UI)**: `elementSyn*` — hidratan en cliente como `<synergos-{kebab}>`. Ver `references/naming-and-ui-bridge.md`.

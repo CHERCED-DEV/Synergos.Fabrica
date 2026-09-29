@@ -24,8 +24,9 @@ pantalla quede llena — sin tocar el módulo Angular ni inventar un adapter nue
 
 ## 0. Prerequisitos
 
-- Stack corriendo para verificar en vivo (usa **synergos-run-dev**): CMS en
-  `http://synergos.local:5000` + el dev server / bundle del módulo del dominio.
+- Stack corriendo para verificar en vivo (usa **synergos-run-dev**): CMS en `$base`
+  (`synergos-guardrails/references/entorno.md`) + el bundle del módulo del dominio publicado
+  (`synergos-cdn-build`).
 - Saber a qué **seam de catálogo/dominio** pertenece la pantalla. Para Eventos es
   `IEventCatalogProvider` (Interfaces) con default `StubEventCatalogProvider`
   (Application). Cada vertical tiene su análogo (`IRoomAvailabilityProvider`,
@@ -40,12 +41,12 @@ pantalla quede llena — sin tocar el módulo Angular ni inventar un adapter nue
 **Rutas base (ejemplo Eventos):**
 
 ```powershell
-$repoRoot   = "C:\Users\HITMA\Desktop\synergos"
-$iface      = "$repoRoot\Synergos.CMS\Synergos.CMS.Interfaces\IEventCatalogProvider.cs"
-$stub       = "$repoRoot\Synergos.CMS\Synergos.CMS.Application\Services\Impl\StubEventCatalogProvider.cs"
-$controller = "$repoRoot\Synergos.CMS\Synergos.CMS.Web\Controllers\EventosController.cs"
-$uiModel    = "$repoRoot\Synergos.UI\platforms\angular\apps\elements\modules\eventos\src\eventos\eventos.model.ts"
-$uiClient   = "$repoRoot\Synergos.UI\platforms\angular\apps\elements\modules\eventos\src\eventos\eventos-api.client.ts"
+# $cms, $ui, $cdnRoot, $base: synergos-guardrails/references/entorno.md
+$iface      = "$cms\Synergos.CMS.Interfaces\IEventCatalogProvider.cs"
+$stub       = "$cms\Synergos.CMS.Application\Services\Impl\StubEventCatalogProvider.cs"
+$controller = "$cms\Synergos.CMS.Web\Controllers\EventosController.cs"
+$uiModel    = "$ui\platforms\angular\apps\elements\modules\eventos\src\eventos\eventos.model.ts"
+$uiClient   = "$ui\platforms\angular\apps\elements\modules\eventos\src\eventos\eventos-api.client.ts"
 ```
 
 ---
@@ -244,16 +245,16 @@ private static EventSessionDto ToSessionDto(EventSession s) =>
 
 ```powershell
 # 5.1 Application compila clean (0 warnings CS):
-dotnet build "$repoRoot\Synergos.CMS\Synergos.CMS.Application\Synergos.CMS.Application.csproj" -v quiet
+dotnet build "$cms\Synergos.CMS.Application\Synergos.CMS.Application.csproj" -v quiet
 
 # 5.2 Web compila cross-project (si el Web NO corre, sin --no-dependencies para validar
 #      que Interfaces+Application enlazan). Con Web corriendo, MSB3021 file-lock es esperado:
-dotnet build "$repoRoot\Synergos.CMS\Synergos.CMS.Web\Synergos.CMS.Web.csproj" -v quiet
+dotnet build "$cms\Synergos.CMS.Web\Synergos.CMS.Web.csproj" -v quiet
 ```
 
 ```powershell
 # 5.3 API sin leaks: la clave debe existir y venir poblada (no null / no NaN / no undefined):
-$r = Invoke-RestMethod "http://synergos.local:5000/api/eventos/event/evt-festival-estereo"
+$r = Invoke-RestMethod "$base/api/eventos/event/evt-festival-estereo"
 $r.artist; $r.highlights; $r.sessions
 # Sanity: artist.name != título del evento (si son iguales, el fallback ganó → algo no se emitió)
 ```
@@ -262,7 +263,7 @@ $r.artist; $r.highlights; $r.sessions
   renderizan (perfil artista + seguidores, lista "por qué asistir", Agenda). Verifica un
   caso con datos (festival) y uno sin (para ver la sección ocultarse limpia). Cero
   `undefined` / `NaN` / secciones vacías con borde.
-- **Regresión de temas:** si el enrich toca estilos, verifica en los 7 temas por-siteRoot
+- **Regresión de temas:** si el enrich toca estilos, verifica en todos los temas por-siteRoot
   (memoria `feedback_verify_all_siteroot_themes`). Para enrich de solo-contenido no aplica.
 - **Cierre:** commit atómico `feat({dominio}): enriquecer …` (nunca mezclar con refactor)
   y, si abriste Ola, ciérrala con **synergos-ola-close**.

@@ -23,6 +23,13 @@ Skill de **completitud**: poblar contenido editorial con cada campo correcto, po
 - **GUIDs por alias en runtime.** `_contentTypeService.Get("alias").Key`, nunca hardcodear Keys. (ADR 0008)
 - **No tocar ubicaciones no permitidas.** Respetar `AllowAtRoot` y `Structure` (allowed children) del DocType.
 - **No seeders en boot, no schema desde content authoring** (ADR 0013 / 0008), **no `if (brand.Key == "X")`** (ADR 0010).
+- **«Todos los campos» no incluye `configOverride`.** Es el JSON libre del editor que pisa lo demás
+  y se descarta en silencio si no parsea; **no se llena para que una funcionalidad arranque**
+  (`CLAUDE.md` §0.C.20 del CMS). Va vacío salvo que el arquitecto pida un valor concreto; si algo
+  sólo funciona con él, lo que falta es cableado → `synergos-funcionalidad` §2.
+- **Contenido bien guardado no es contenido bien pintado.** Un elemento puede hidratar y tirar lo
+  que llenaste si la vista SynHost le manda otras claves (D1): verificarlo es `synergos-app-verify`
+  §4.bis, no esta skill.
 
 ---
 

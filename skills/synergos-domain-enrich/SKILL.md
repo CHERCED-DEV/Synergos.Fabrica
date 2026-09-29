@@ -1,6 +1,6 @@
 ---
 name: synergos-domain-enrich
-description: Enriquece un dominio/vertical de Synergos a nivel best-in-class de forma COMPOSABLE y build-safe, con la receta de 3 capas derivada del enriquecimiento de Eventos (artist + highlights + sessions). Actívala cuando haya que darle más carne a la ficha o pantalla de un dominio (Eventos, Tienda, Healthcare, Propiedades, etc.): la UI Angular ya lee campos ricos pero el backend cae a fallbacks pobres, o quieres agregar contenido real es-CO a un stub. Cubre el orden obligatorio: (1) leer el model.ts + template Angular para saber QUÉ lee la UI y con qué guards, (2) Interfaces: records de dominio nuevos + campos OPCIONALES con default=null al record existente (aditivo → cero call-sites rotos, la clave del build-safe), (3) Application: poblar el stub con contenido real es-CO revisado por un crítico, (4) Web: DTOs + reshape del response + helpers null-safe emitiendo las claves EXACTAS del contrato (ADR 0083), (5) build cross-project + verificar API sin leaks + navegador. Respeta ADR 0002 (Application sin Umbraco) y complementa synergos-contract-drift.
+description: Enriquece un dominio/vertical de Synergos a nivel best-in-class de forma COMPOSABLE y build-safe, con la receta de 3 capas derivada del enriquecimiento de Eventos (artist + highlights + sessions). Actívala cuando haya que darle más carne a la ficha o pantalla de un dominio (Eventos, Tienda, Healthcare, Propiedades, etc.): la UI Angular ya lee campos ricos pero el backend cae a fallbacks pobres, o quieres agregar contenido real es-CO a un stub. Cubre el orden obligatorio: (1) leer el model.ts + template Angular para saber QUÉ lee la UI y con qué guards, (2) Interfaces: records de dominio nuevos + campos OPCIONALES con default=null al record existente (aditivo → cero call-sites rotos, la clave del build-safe), (3) Application: poblar el stub con contenido real es-CO revisado por un crítico, (4) Web: DTOs + reshape del response + helpers null-safe emitiendo las claves EXACTAS del contrato (ADR 0083), (5) build cross-project + verificar API sin leaks + navegador. Antes decide por qué canal entra cada campo: un vertical es una funcionalidad (ADR 0134) que recibe cableado, así que los datos del dominio van por la API, los textos de la UI por t() y una regla de negocio nunca por configOverride. Respeta ADR 0002 (Application sin Umbraco) y complementa synergos-contract-drift.
 model: claude-opus-4-8
 ---
 
@@ -19,6 +19,32 @@ pantalla quede llena — sin tocar el módulo Angular ni inventar un adapter nue
 
 > Regla de oro: **el enriquecimiento es ADITIVO y viaja de la UI hacia atrás.** Primero
 > confirmas qué lee la UI; luego bajas por Interfaces → Application → Web. Nunca al revés.
+
+---
+
+## 0.bis Un vertical es una FUNCIONALIDAD: cada cosa entra por su canal
+
+La app de un dominio (`eventos`, `storefront`, `gov`…) es una **funcionalidad** en el modelo de
+ADR 0134: grande por dentro, un tag hacia el CMS, y **recibe cableado, no su configuración por el
+editor** (`CLAUDE.md` §0.C.20 del CMS). Antes de enriquecer, se decide por qué canal entra cada
+campo nuevo — esta skill cubre sólo el primero:
+
+| lo que falta en la pantalla | canal | quién |
+|---|---|---|
+| **datos del dominio** (artista, agenda, destacados, precio) | la API del vertical, desde el dominio/stub | **esta skill** |
+| **textos propios de la UI** (títulos de sección, labels, errores, `aria-*`) | diccionario: la funcionalidad llama `t(clave, respaldo)` con la clave en un prefijo que el bridge publica; sus hojas reciben strings (UI regla 44; ADR 0136, Propuesta) | cambio UI + clave en uSync (`synergos-usync-author` §7) |
+| **una regla de negocio** (comisión, moneda, alcance, endpoint) | **no hay canal todavía**: se queda como constante del componente y la deuda se anota citando la ADR 0137 (Propuesta). **Nunca** por `configOverride` ni por un campo nuevo del editor | ticket |
+| **una decisión editorial** (qué variante, mostrar u ocultar) | un selector en el ElementType (ADR 0021), nunca texto libre | `synergos-cms-author` |
+| **quién es el usuario** | `window.synergos.member`, nunca un campo del editor con un valor por defecto | UI |
+
+Dos consecuencias para el enriquecimiento:
+
+- **El diccionario no es un catálogo de datos maestros.** Nombres de ciudades, categorías o
+  etapas que viajan con el dato se traducen **en el servidor** y llegan resueltos en la respuesta
+  (el precedente sano son las fichas de Realty, Stay y Gobierno con `ICultureDictionary`; ADR 0136
+  §5). No se meten como claves `Dominio.` + código.
+- **Si lo que llega vacío viene por la vista SynHost y no por la API** (un título, una bajada que el
+  editor sí escribió), no es un enriquecimiento: es D1, y va por `synergos-contract-drift` §7.
 
 ---
 
@@ -282,6 +308,8 @@ $r.artist; $r.highlights; $r.sessions
 | Editar el `*.model.ts` / template Angular para "que calce con el backend" | La UI es la fuente de verdad de claves. El backend se adapta a ella, no al revés. |
 | Empezar por el controller | Empieza por leer la UI (§1) → Interfaces → Application → Web. El flujo va UI-hacia-atrás. |
 | Contenido genérico / con anglicismos / redundante | Pásalo por el checklist del crítico (§3.1) antes de commitear. |
+| Meter una regla de negocio (comisión, moneda) en el stub o en un `configOverride` para que la pantalla «se vea completa» | No hay canal todavía: constante del componente + deuda anotada (ADR 0137, Propuesta) (§0.bis) |
+| Traducir nombres del dominio con claves de diccionario por código | Traducirlos en el servidor y mandarlos resueltos (ADR 0136 §5) |
 | Meter lógica de negocio en Application con `using Umbraco.Cms.*` | Application es lógica pura (ADR 0002). Contenido y records, nada de Umbraco/AspNetCore. |
 
 ---

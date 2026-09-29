@@ -1,6 +1,6 @@
 ---
 name: synergos-test-author
-description: Escribe tests xUnit para seams de Synergos CMS siguiendo los 4 casos canónicos del proyecto — empty, happy, filter, idempotent (ADR 0075). Conoce los frameworks (xUnit + NSubstitute + FluentAssertions), las trampas de NSubstitute en Umbraco, y los patrones de mock para IBundleRegistryClient, ISynHostEmitter, IBrandingProvider e IAuditTrailWriter. Invocar cuando se crea un nuevo seam o se modifica uno existente.
+description: Escribe tests xUnit para seams de Synergos CMS siguiendo los 4 casos canónicos del proyecto — empty, happy, filter, idempotent (ADR 0075). Conoce los frameworks (xUnit + NSubstitute + FluentAssertions), las trampas de NSubstitute en Umbraco, y los patrones de mock para IBundleRegistryClient, ISynHostEmitter, IBrandingProvider e IAuditTrailWriter. Cubre también los gates que leen la fuente del disco: mutar cada uno y comprobar que la mutación entró, acotar la aserción a su frase y no al fichero entero (la lección de SegundoConsumidorTests), los dos sentidos, la lista antes que la cifra y la red por el vacío. Invocar cuando se crea un nuevo seam o se modifica uno existente, o al escribir o endurecer un gate.
 model: claude-opus-4-8
 ---
 
@@ -342,4 +342,65 @@ dotnet test $testProject --collect:"XPlat Code Coverage" --results-directory cov
 dotnet test $testProject --logger "trx;LogFileName=results.trx"
 ```
 
-**Resultado esperado:** `Passed: 111+` (la suite completa pre-Ola). Si algún test falla después de los cambios, no cerrar la Ola (`synergos-ola-close` lo verifica).
+**Resultado esperado:** la cifra de cada suite no se copia acá: la dice su propia corrida y la
+cuadra `SuiteCountTests` contra su ensamblado (`CLAUDE.md` §0.A.9 del CMS). Las suites son proyectos
+separados —hoy `Synergos.CMS.Tests`, `backend/Synergos.Servicios.Tests` y
+`Synergos.Arquitectura.Tests`; la lista viva es `find . -name "*Tests.csproj"` en el CMS— y se
+reporta cada una por separado. Si algún test falla después de los cambios, no cerrar la Ola
+(`synergos-ola-close` lo verifica).
+
+**En Windows hay rojos de entorno** con nombre y causa (#170; `CLAUDE.md` §5 del CMS,
+`feedback_a_dev_machine_is_not_ci`): se nombran por test y por ticket, y **cualquier rojo que no sea
+uno de ésos es real**. Nunca «son los de siempre» sin mirar el nombre (`synergos-medir` §5).
+
+---
+
+## 10. Los gates que leen la fuente (`Synergos.Arquitectura.Tests`)
+
+Muchos gates del CMS no usan un tipo de producción: leen el disco —una guía, una vista, un `.mjs`,
+un compose— y afirman algo sobre él. Tienen sus propias trampas, y la auditoría de reutilización
+(#172) encontró una en un gate que estaba en verde.
+
+### 10.1 Todo gate se muta, y se comprueba que la mutación entró
+
+Se reintroduce el defecto que el gate dice cazar, se ve el **rojo**, y se restaura **tocando el
+fichero** (doc 12 §5.10 del CMS). Antes de creerle al resultado, `git diff` confirma que la mutación
+está puesta: una que no se aplicó —un fin de línea distinto, un patrón que no casó— deja el verde y se
+lee como verificación. Un gate que nunca se vio fallar no vigila nada.
+
+### 10.2 La aserción se acota a SU frase, no al fichero entero
+
+`SegundoConsumidorTests` comprobaba que `CLAUDE.md` nombrara cada capacidad sin consumidor con
+`guia.Contains("`Api.X`")` sobre la guía **entera**: cualquier otra mención entre backticks, en
+cualquier sección, la daba por nombrada. Medido en el #172: con `Api.Catalog` quitada de la lista,
+el gate seguía verde porque la guía la nombra en otros sitios; y una tabla nueva con los nombres
+entre backticks lo cegaba para cuatro capacidades más. El arreglo fue cortar la **frase** que
+empieza en su marca («Con **ninguno**,») hasta el punto seguido, y cruzarla en los dos sentidos:
+
+```csharp
+var frase = Frase(guia, "Con **ninguno**,");   // desde la marca hasta ". "
+var faltan = delDisco.Where(c => !frase.Contains($"`Api.{Capitalizar(c)}`", StringComparison.OrdinalIgnoreCase));
+var deMas  = Regex.Matches(frase, @"`Api\.(\w+)`").Select(m => m.Groups[1].Value.ToLowerInvariant())
+                  .Where(c => !delDisco.Contains(c, StringComparer.Ordinal));
+```
+
+**La mutación que lo prueba** es la del defecto: quitar el nombre de la frase **y dejarlo en otra
+parte del fichero**. Si el gate sigue verde, está mirando el fichero y no la frase.
+
+### 10.3 Las otras cuatro, que ya costaron
+
+- **Los dos sentidos**: lo que el disco tiene y la guía no nombra, **y** lo que la guía nombra y el
+  disco ya no tiene. Un censo vigilado en uno solo queda mintiendo.
+- **Una lista, no una cifra**: con un número, quitar uno y poner otro pasa en verde (UI regla 39).
+- **Red por el vacío**: si el descubrimiento devuelve cero —o todo igual— el gate **falla**; un
+  recorrido que encuentra una sola carpeta pasa en verde sin mirar nada (`CLAUDE.md` §2 del CMS,
+  nota de `RutasDeProyectoTests`).
+- **Contar menciones de un tipo no es contar usos**: el sujeto se cuenta a sí mismo
+  (`feedback_counting_mentions_of_a_type_measures_the_opposite_of_using_it`, `synergos-medir` §1).
+
+### 10.4 Lo que un test del CMS no ve: el cable hacia el elemento
+
+Si el seam termina en una vista SynHost, un test del CMS prueba lo que la vista **emite**, y el
+elemento se prueba con **sus** claves: el cable entre los dos no lo prueba nadie (D1). El test que
+importa está del lado de la UI: un spec que le da al elemento el `config` **exacto** que emite la
+vista (`synergos-contract-drift` §7.3).

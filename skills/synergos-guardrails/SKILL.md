@@ -209,9 +209,12 @@ Mientras desarrollás, `npm run dev:cdn` rehace el runtime solo cuando tocás `l
   Lit/TS, requiere .NET 9+). NU1902 (moderate, sin patch en 13.x) es aceptado. → ADR 0001
 - **Lo clavado es la RAMA 13 LTS, no un parche**: subir dentro de 13.x no es el upgrade que
   ADR 0001 prohíbe. **La versión exacta no se copia acá**: se lee de `Directory.Packages.props`
-  del CMS (`Umbraco.Cms`), donde la vigila `VersionDeUmbracoTests`. El #141 midió qué pasa
-  cuando se copia: sacar el arnés del CMS dejó la copia de esta skill fuera de ese gate. Decía 13.13.1 hasta el #149, que subió el pin porque apareció un aviso
-  **high** con parche dentro de la rama (NU1903). Hay gate (`VersionDeUmbracoTests`).
+  del CMS (`Umbraco.Cms`), donde la vigila `VersionDeUmbracoTests`. Decía 13.13.1 hasta el #149,
+  que subió el pin porque apareció un aviso **high** con parche dentro de la rama (NU1903).
+  **Y la rama que afirman esta sección y la fila de §8 sí se cruza**: el CI del CMS trae este
+  arnés del SHA de su lock y `tools/lock.mjs` compara cada una de esas frases con ese fichero
+  (#142). Sacar el arnés del CMS las había dejado fuera de todo gate (#141). Si el pin cambia de
+  rama, las frases y la plantilla de ese script se mueven en el mismo commit.
 - **Sin Management API para contenido** (esa REST es v14+). El contenido se autora
   **server-side** vía `IContentService` / el motor de fill (`POST /dev/fill-synergos-pages`).
   → `synergos-content-fill` · `synergos-cms-author`

@@ -1,6 +1,6 @@
 ---
 name: synergos-element-inventory
-description: Genera un mapa cruzado completo de todos los elementos de Synergos — cruza uSync XMLs (ElementTypes), Razor views (SynHost + Block Grid wrappers), las fuentes de la UI (cada carpeta con src/main.ts, lo mismo que compila build.mjs), y los bundles publicados (registry.json del CDN construido). Detecta elementos incompletos ("a medias") y los clasifica por nivel de completitud. Útil antes de una Ola para saber el estado real.
+description: Genera un mapa cruzado completo de todos los elementos de Synergos — cruza uSync XMLs (ElementTypes), Razor views (SynHost + Block Grid wrappers), las fuentes de la UI (cada carpeta con src/main.ts, lo mismo que compila build.mjs), y los bundles publicados (registry.json del CDN construido). Detecta elementos incompletos ("a medias") y los clasifica por nivel de completitud. Pone al lado lo que las capas no dicen: si cada elemento con gemela en el design system la monta (la regla de los dos pisos, contada con dos señales para que el elemento no se cuente a sí mismo) y cómo se clasifica un bundle sin ElementType (embebido, otro alias o vocabulario), sin proponer retirar nada. Útil antes de una Ola para saber el estado real.
 model: claude-opus-4-8
 ---
 
@@ -12,6 +12,19 @@ Un elemento "completo" en Synergos tiene exactamente 5 capas presentes:
 3. **SynHost renderer** — `SynHost/{Pascal}.cshtml` (delegación a ISynHostEmitter)
 4. **Fuente en la UI** — una carpeta `<kebab>/` con `src/main.ts` bajo `Synergos.UI/platforms/`
 5. **Bundle publicado** — entrada en `registry.json` + archivo en el CDN (`$CDN_ROOT`)
+
+**Completo no es «funciona» ni «está bien hecho».** Las cinco capas dicen que las piezas existen;
+no dicen dos cosas que la auditoría de reutilización midió y que este inventario tiene que poner al
+lado:
+
+- **Si el elemento monta su gemela del design system** (la regla de los dos pisos, ADR 0134 §4) →
+  §5.bis.
+- **Si lo que emite la vista SynHost es lo que el elemento lee** (D1): cinco capas en verde y el
+  elemento se pinta vacío al hidratar. No se deriva del disco sin ejecutar → `synergos-contract-drift`
+  §7 por elemento, y `synergos-app-verify` §4.bis en vivo.
+
+Y lo que falta **no se propone borrar**: un bundle sin ElementType o una pieza sin consumidor es
+vocabulario del catálogo hasta que el arquitecto decida otra cosa (§7, ADR 0134 §3).
 
 ---
 
@@ -121,6 +134,7 @@ $fuentes = @(Get-ChildItem $uiPlatforms -Recurse -Filter "main.ts" -File -ErrorA
         $carpeta = $_.Directory.Parent
         [PSCustomObject]@{
             Nombre     = $carpeta.Name
+            Carpeta    = $carpeta.FullName
             Tier       = $carpeta.Parent.Name
             Plataforma = ($carpeta.FullName.Substring($uiPlatforms.Length).TrimStart("\", "/") -split "[\\/]")[0]
         }
@@ -173,6 +187,56 @@ if ($reg) {
 
 ---
 
+## 5.bis Los dos pisos — ¿el elemento monta su gemela del design system?
+
+**Un elemento publicado que tiene gemela en el DS la monta; nunca la reimplementa** (ADR 0134 §4,
+UI regla 41). Se cuenta con **dos señales a la vez** —el tag `<syn-x` en su fuente **y** la clase
+importada de `@synergos/shared`— porque con una sola el sujeto se cuenta a sí mismo: el elemento
+`card` **se llama** `CardComponent`, igual que la pieza, e importa `Badge`, `Button` y `Heading`
+para rehacer la tarjeta; buscar el nombre de la clase lo daba por montado (`synergos-medir` §1). El
+tag se busca con frontera (`<syn-x` seguido de espacio, `>`, `/` o fin de línea): partido en dos
+líneas, un patrón con espacio no lo ve.
+
+```powershell
+# Las piezas del DS: carpeta (= concepto), selector y clase — del disco, no de una lista.
+$ds = Join-Path $ui "platforms\angular\libs\shared\src\components"
+$gemelas = @(foreach ($f in Get-ChildItem $ds -Recurse -Filter "*.ts" | Where-Object { $_.Name -notmatch '\.spec\.ts$' -and $_.Name -ne 'index.ts' }) {
+    $src = [IO.File]::ReadAllText($f.FullName)
+    $sel = [regex]::Match($src, "selector:\s*'(syn-[a-z0-9-]+)'").Groups[1].Value
+    $cls = [regex]::Match($src, "export class (\w+)").Groups[1].Value
+    if ($sel -and $cls) { [PSCustomObject]@{ Selector = $sel; Clase = $cls; Concepto = $f.Directory.Name } }
+})
+if ($gemelas.Count -eq 0) { throw "No encontré piezas del DS en $ds — el descubrimiento está roto, no reportar." }
+
+# Pares POR NOMBRE (carpeta del elemento = carpeta de la pieza). Los pares por concepto con otro
+# nombre (un paginador, un cajón que es un modal) no dejan rastro en el nombre: se declaran a mano.
+$dosPisos = foreach ($f in $fuentes) {
+    $g = $gemelas | Where-Object { $_.Concepto -eq $f.Nombre } | Select-Object -First 1
+    if (-not $g) { continue }
+    $texto = (Get-ChildItem $f.Carpeta -Recurse -File -Include "*.ts", "*.html" |
+        Where-Object { $_.Name -notmatch '\.spec\.ts$' } | ForEach-Object { [IO.File]::ReadAllText($_.FullName) }) -join "`n"
+    $usaTag  = [regex]::IsMatch($texto, "<$([regex]::Escape($g.Selector))(\s|>|/|$)", 'Multiline')
+    $importa = [regex]::IsMatch($texto, "import\s*\{[^}]*\b$($g.Clase)\b[^}]*\}\s*from\s*'@synergos/shared")
+    [PSCustomObject]@{ Elemento = $f.Nombre; Gemela = $g.Selector; Tag = $usaTag; Import = $importa; Monta = ($usaTag -and $importa) }
+}
+$dosPisos | Sort-Object Elemento | Format-Table -AutoSize
+```
+
+Cómo se lee:
+
+- `Monta = False` con gemela **del mismo concepto** → incumple los dos pisos. La salida no es
+  borrar ninguna de las dos: se monta la pieza, y si el elemento es mejor, **el DS absorbe** lo
+  mejor y el elemento queda como host delgado (tokens e i18n de la pieza antes de convertirlo).
+- **Mismo nombre, dos conceptos** (`stepper`: el elemento es un indicador de pasos, `syn-stepper` un
+  `+/-` numérico) → no es un incumplimiento: es un renombre pendiente. Se anota con su razón.
+- **Un alias** puede esconder un par: un elemento que responde a varios `name` en el registry (el
+  tag `<synergos-text-block>`) no casa por carpeta con la pieza que monta. Mirar los `name` del
+  registry antes de declarar que un concepto no tiene par.
+- El gate que vigilaría esto en los dos sentidos está **propuesto y no construido** (ADR 0134,
+  «Qué la vigila»): hasta entonces esta tabla es una medición, con su fecha.
+
+---
+
 ## 6. Clasificar por nivel de completitud
 
 ```powershell
@@ -201,14 +265,23 @@ foreach ($el in $elements) {
 
 ## 7. Agregar elementos publicados en el CDN que NO están en uSync
 
+Un bundle publicado sin `elementSyn*` **no es un huérfano que sobra**. Puede ser un elemento que otro
+bundle **embebe** (se declara en `dependencies` del registry fuente y, por diseño, no lleva DocType:
+ADR 0126), un elemento con otro prefijo de alias (`elementComp*`), o vocabulario que todavía nadie
+coloca. Ninguna de esas es «borrar» (ADR 0134 §3); lo que se hace es **clasificarlo**:
+
 ```powershell
-# Bundles huérfanos — en registry pero sin ElementType en uSync
 if ($reg) {
     $uSyncAliases = $elements | ForEach-Object { $_.Kebab }
-    $orphanBundles = @($reg.elements) | Where-Object { $_.name -notin $uSyncAliases }
-    if ($orphanBundles.Count -gt 0) {
-        Write-Warning "Bundles en registry SIN ElementType en uSync:"
-        $orphanBundles | ForEach-Object { Write-Warning "  ORPHAN BUNDLE: $($_.name)" }
+    $fuenteReg    = Get-Content (Join-Path $ui "vitals\contracts\src\element-registry.json") -Raw | ConvertFrom-Json
+    $embebidos    = @($fuenteReg | Where-Object { $_.dependencies } | ForEach-Object { $_.dependencies })
+    $sinTipo = @($reg.elements) | Where-Object { $_.name -notin $uSyncAliases }
+    foreach ($b in $sinTipo) {
+        $alias = ($fuenteReg | Where-Object { $_.name -eq $b.name } | Select-Object -First 1).alias
+        $por = if ($b.name -in $embebidos) { "embebido por otro bundle (dependencies, ADR 0126)" }
+               elseif ($alias -and $alias -notlike "elementSyn*") { "alias $alias (no elementSyn*)" }
+               else { "sin colocar: vocabulario, o salida del CMS pendiente de decisión" }
+        Write-Output "  SIN elementSyn*: $($b.name) — $por"
     }
 }
 ```
@@ -319,3 +392,8 @@ foreach ($el in $needsWork) {
     if (-not $el.HasBundle)  { Write-Output "    4. Ejecutar /synergos-cdn-build para $($el.Kebab)" }
 }
 ```
+
+Antes de crear la capa que falta, las dos preguntas de `synergos-funcionalidad`: **¿es una
+funcionalidad o una pieza?** (de eso depende qué campos lleva el ElementType) y, si es pieza, **¿su
+concepto ya existe en el design system?** (entonces la fuente nueva la monta, §5.bis). Y un elemento
+«completo» del §8 entra al plan igual si incumple los dos pisos o tiene D1.

@@ -1,6 +1,6 @@
 ---
 name: synergos-schema-audit
-description: Auditoría completa del schema de Synergos — cruza uSync XMLs contra Razor views, Angular projects, registry.json y código C# para encontrar orphans, ElementTypes incompletos, DataTypes sin uso, compositions sin consumers, GUIDs rotos en BlockLists, y elementos "a medias". Genera un reporte accionable por categoría.
+description: Auditoría completa del schema de Synergos — cruza uSync XMLs contra Razor views, Angular projects, registry.json y código C# para encontrar orphans, ElementTypes incompletos, DataTypes sin uso, compositions sin consumers, GUIDs rotos en BlockLists, y elementos "a medias". Genera un reporte accionable por categoría, con red por el vacío en cada conteo (un paso que da cero en todo está roto, no limpio), y sin proponer retirar nada por defecto: lo que no tiene consumidor es vocabulario hasta que el arquitecto decida (ADR 0134).
 model: claude-opus-4-8
 ---
 
@@ -37,8 +37,8 @@ $elementTypes = Get-ChildItem $uSyncCT -Filter "elementSyn*.config" -Recurse |
         [xml]$xml = Get-Content $_.FullName -Encoding UTF8
         [PSCustomObject]@{
             File     = $_.Name
-            Alias    = $xml.ContentType.Attributes["Alias"]?.Value ?? $xml.ContentType.alias
-            Key      = $xml.ContentType.Attributes["Key"]?.Value
+            Alias    = $xml.ContentType.GetAttribute("Alias")
+            Key      = $xml.ContentType.GetAttribute("Key")
             IsElement= $xml.ContentType.Info.IsElement
             Name     = $xml.ContentType.Info.Name
         }
@@ -52,37 +52,44 @@ $elementTypes | ForEach-Object { Write-Output "  · $($_.Alias)  ($($_.Key))" }
 
 ## 2. Inventario de Compositions en uSync
 
+Una composition la **usa** un ContentType que la nombra en `<Info><Compositions><Composition Key="…">`.
+Se cuenta por esa **estructura**, no buscando la Key como texto: el fichero de la propia composition
+también contiene su Key, y el conteo por texto que vivía acá la excluía mal —comparaba la ruta con su
+propio nombre de fichero, que siempre casa— y daba **cero consumidores a todas**. Medido sobre el
+árbol: por texto, ninguna con consumidor; por estructura, casi todas. Es el sujeto que se cuenta a
+sí mismo, del revés (`synergos-medir` §1).
+
 ```powershell
-$compositions = Get-ChildItem $uSyncCT -Filter "comp*.config" -Recurse |
-    ForEach-Object {
-        [xml]$xml = Get-Content $_.FullName -Encoding UTF8
-        $key  = $xml.ContentType.Attributes["Key"]?.Value
-        $desc = $xml.ContentType.Info.Description
-
-        # Determinar si es reserved
-        $reserved = $desc -match '^\[Bloqueado externamente' -or $desc -match '^\[Disponible'
-
-        # Contar consumers (ContentTypes que tienen este Key en CompositionKeys)
-        $consumers = Get-ChildItem $uSyncCT -Recurse -Filter "*.config" |
-            Select-String -Pattern $key -SimpleMatch |
-            Where-Object { $_.Path -notmatch [regex]::Escape($_.Filename) } |
-            Select-Object -ExpandProperty Path -Unique
-
-        [PSCustomObject]@{
-            Alias     = $xml.ContentType.Attributes["Alias"]?.Value
-            Key       = $key
-            Reserved  = $reserved
-            Consumers = @($consumers).Count
-            Desc      = ($desc -replace '\s+', ' ').Trim() | Select-Object -First 1
-        }
+# Quién compone qué: la estructura del XML, no la Key como texto
+$usos = @{}
+foreach ($f in Get-ChildItem $uSyncCT -Recurse -Filter "*.config") {
+    [xml]$x = Get-Content $f.FullName -Encoding UTF8
+    foreach ($c in @($x.ContentType.Info.Compositions.Composition)) {
+        if ($c -and $c.Key) { $usos[$c.Key] = 1 + [int]$usos[$c.Key] }
     }
-
-$orphanComps = $compositions | Where-Object { -not $_.Reserved -and $_.Consumers -eq 0 }
-Write-Output "Compositions totales: $($compositions.Count)"
-Write-Output "  Orphans reales (sin consumers ni marker): $($orphanComps.Count)"
-if ($orphanComps) {
-    $orphanComps | ForEach-Object { Write-Warning "  ORPHAN: $($_.Alias)  ($($_.Key))" }
 }
+
+$compositions = @(Get-ChildItem $uSyncCT -Filter "comp*.config" -Recurse | ForEach-Object {
+    [xml]$xml = Get-Content $_.FullName -Encoding UTF8
+    $key  = $xml.ContentType.GetAttribute("Key")
+    $desc = [string]$xml.ContentType.Info.Description
+    [PSCustomObject]@{
+        Alias     = $xml.ContentType.GetAttribute("Alias")
+        Key       = $key
+        Reserved  = ($desc -match '^\[Bloqueado externamente' -or $desc -match '^\[Disponible')
+        Consumers = [int]$usos[$key]
+    }
+})
+
+# Red por el vacío: si TODAS salen sin consumidor, lo roto es el conteo, no el schema
+if ($compositions.Count -gt 0 -and @($compositions | Where-Object { $_.Consumers -gt 0 }).Count -eq 0) {
+    throw "Ninguna composition tiene consumidor: el conteo está roto, no reportar."
+}
+
+$sinConsumidor = @($compositions | Where-Object { -not $_.Reserved -and $_.Consumers -eq 0 })
+Write-Output "Compositions totales: $($compositions.Count)"
+Write-Output "  Sin consumidor y sin marker: $($sinConsumidor.Count)"
+$sinConsumidor | ForEach-Object { Write-Warning "  SIN CONSUMIDOR: $($_.Alias)  ($($_.Key))" }
 ```
 
 ---
@@ -94,9 +101,11 @@ $dataTypes = Get-ChildItem $uSyncDT -Filter "*.config" -Recurse |
     ForEach-Object {
         [xml]$xml = Get-Content $_.FullName -Encoding UTF8
         [PSCustomObject]@{
-            Alias  = $xml.DataType.Attributes["Alias"]?.Value
-            Key    = $xml.DataType.Attributes["Key"]?.Value
-            Editor = $xml.DataType.Attributes["EditorAlias"]?.Value
+            Alias  = $xml.DataType.GetAttribute("Alias")
+            Key    = $xml.DataType.GetAttribute("Key")
+            Editor = [string]$xml.DataType.Info.EditorAlias   # en el disco va en <Info>, no como atributo
+            Config = [string]$xml.DataType.Config.InnerText   # JSON en CDATA; no hay <PreValues>
+            File   = $_.FullName
         }
     }
 
@@ -217,31 +226,28 @@ $registryIssues | ForEach-Object { Write-Warning "  $_" }
 
 ## 7. Verificar GUIDs en BlockLists (collision check)
 
+La configuración de un DataType está en `<Config>` como JSON dentro de CDATA (`Blocks` con
+mayúscula); este paso leía `<PreValues>`, que ningún fichero del disco tiene, así que **nunca
+revisaba nada** y siempre daba cero. Por eso la red de abajo.
+
 ```powershell
 $blockListCollisions = [System.Collections.Generic.List[string]]::new()
 
-$blockListDTs = $dataTypes | Where-Object { $_.Editor -eq "Umbraco.BlockList" }
-foreach ($dt in $blockListDTs) {
-    [xml]$dtXml = Get-Content (Get-ChildItem $uSyncDT -Recurse | Where-Object {
-        $content = Get-Content $_.FullName -Raw
-        $content -match $dt.Key
-    } | Select-Object -First 1).FullName -Encoding UTF8
+$blockListDTs = @($dataTypes | Where-Object { $_.Editor -in @("Umbraco.BlockList", "Umbraco.BlockGrid") })
+if ($blockListDTs.Count -eq 0) { throw "Ningún DataType BlockList/BlockGrid leído: el paso 3 está roto, no reportar." }
 
-    $blocksJson = $dtXml.DataType.PreValues.PreValue | Where-Object { $_.Alias -eq "blocks" }
-    if ($blocksJson) {
-        try {
-            $blocks = $blocksJson.value | ConvertFrom-Json
-            foreach ($block in $blocks) {
-                $blockKey = $block.contentElementTypeKey
-                if ($blockKey -and $blockKey -eq $dt.Key) {
-                    $blockListCollisions.Add("GUID COLLISION en $($dt.Alias): DataType Key == Block contentElementTypeKey ($blockKey)")
-                }
+foreach ($dt in $blockListDTs) {
+    try { $cfg = $dt.Config | ConvertFrom-Json } catch { Write-Warning "  Config ilegible: $($dt.Alias)"; continue }
+    foreach ($block in @($cfg.Blocks)) {
+        foreach ($k in @($block.contentElementTypeKey, $block.settingsElementTypeKey)) {
+            if ($k -and $k -eq $dt.Key) {
+                $blockListCollisions.Add("GUID COLLISION en $($dt.Alias): la Key del DataType es la de un bloque ($k)")
             }
-        } catch { }
+        }
     }
 }
 
-Write-Output "BlockList GUID collisions: $($blockListCollisions.Count)"
+Write-Output "BlockList/BlockGrid revisados: $($blockListDTs.Count) - GUID collisions: $($blockListCollisions.Count)"
 $blockListCollisions | ForEach-Object { Write-Error "  $_" }
 ```
 
@@ -275,7 +281,7 @@ Write-Output "══════════════════════
 Write-Output "  SYNERGOS Schema Audit — $(Get-Date -Format 'yyyy-MM-dd HH:mm')"
 Write-Output "═══════════════════════════════════════════════════════════"
 Write-Output "  ElementTypes      : $($elementTypes.Count)"
-Write-Output "  Compositions      : $($compositions.Count)  ($($orphanComps.Count) orphans reales)"
+Write-Output "  Compositions      : $($compositions.Count)  ($($sinConsumidor.Count) sin consumidor ni marker)"
 Write-Output "  DataTypes         : $($dataTypes.Count)  ($($unusedDTs.Count) sin uso)"
 Write-Output ""
 Write-Output "  Razor issues      : $($razorIssues.Count)"
@@ -285,7 +291,7 @@ Write-Output "  BlockList GUID    : $($blockListCollisions.Count)"
 Write-Output "  Encoding issues   : $($encodingIssues.Count)"
 Write-Output "═══════════════════════════════════════════════════════════"
 
-$total = $orphanComps.Count + $unusedDTs.Count + $razorIssues.Count +
+$total = $sinConsumidor.Count + $unusedDTs.Count + $razorIssues.Count +
          $angularIssues.Count + $registryIssues.Count +
          $blockListCollisions.Count + $encodingIssues.Count
 
@@ -303,13 +309,20 @@ Write-Output "══════════════════════
 
 ## 10. Acciones por tipo de issue
 
+**Nada de lo que este reporte encuentra se retira por defecto** (ADR 0134 §3, `CLAUDE.md` §0.C.21
+del CMS). El reporte mide **alcance**; qué hacer con lo que nadie alcanza es una decisión de producto,
+con cuatro salidas —usar, mejorar, fusionar un duplicado, declararlo con su disparador— y retirar
+sólo con evidencia de que el concepto sobra, decidido por el arquitecto. Lo mismo vale para el piso
+Razor: una pieza SSR con gemela Angular sin usar es una decisión **por concepto** (cuál gana), no
+una baja automática.
+
 | Issue | Acción |
 |-------|--------|
-| Razor MISSING | Crear `SynHost/{Pascal}.cshtml` con patrón ISynHostEmitter (ver synergos-cms-author §5) |
-| Angular MISSING | Crear proyecto Angular en el tier correcto (ver synergos-cms-author §6) |
+| Razor MISSING | Crear `SynHost/{Pascal}.cshtml` con patrón ISynHostEmitter (ver synergos-cms-author §5), con las claves que conserva el sanitizador del elemento |
+| Angular MISSING | Crear la fuente copiando la forma de un elemento vivo (synergos-cms-author §6); si el concepto ya existe en el design system, montarlo |
 | NOT IN REGISTRY | Ejecutar synergos-cdn-build para ese elemento |
-| REGISTRY ORPHAN | Verificar si el ElementType fue eliminado; si sí, eliminar de registry.json |
-| DataType sin uso | Puede ser legacy — verificar si está referenciado en bloques de BlockGrid antes de eliminar |
-| Composition orphan | Verificar si tiene marker `[Disponible...]` antes de proponer eliminación |
+| REGISTRY ORPHAN | **No es «sobra»**: puede ser un elemento que otro bundle embebe (`dependencies`, sin DocType por diseño: ADR 0126), uno con alias de otro prefijo, o vocabulario sin colocar. Clasificarlo (`synergos-element-inventory` §7). `registry.json` no se edita a mano: lo escribe la publicación |
+| DataType sin uso | Puede ser legacy o vocabulario — verificar si lo usa un MediaType, un MemberType o un bloque antes de decidir nada |
+| Composition sin consumidor | Si tiene marker `[Disponible…]`/`[Bloqueado…]` es scaffolding; si no, se anota para el arquitecto — no se propone eliminarla |
 | BlockList GUID collision | Asignar Key nuevo al DataType (ver synergos-usync-author §1A) |
 | Encoding UTF-16 | Reescribir con `[IO.File]::WriteAllText(path, content, [Text.Encoding]::UTF8)` |

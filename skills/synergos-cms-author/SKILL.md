@@ -1,6 +1,6 @@
 ---
 name: synergos-cms-author
-description: Authoring full-stack del SCHEMA de Synergos CMS — cuando no existe el ElementType/Composition/DataType necesario, lo crea completo (uSync XML + Razor view SynHost + componente Angular standalone), leyendo el schema vivo de uSync/v9/. El contenido editorial y la media no los crea esta skill: se autoran server-side (IContentService/IMediaService detrás del flag DevSeed) con synergos-content-fill y synergos-media-upload.
+description: Authoring full-stack del SCHEMA de Synergos CMS — cuando no existe el ElementType/Composition/DataType necesario, lo crea completo (uSync XML + Razor view SynHost + componente Angular standalone), leyendo el schema vivo de uSync/v9/. Antes de crear clasifica si es funcionalidad o pieza (ADR 0134), busca el concepto en el design system para montarlo en vez de rehacerlo, y deja las claves que emite la vista SynHost iguales a las que conserva el sanitizador del elemento, comprobado con un spec (el defecto D1). El contenido editorial y la media no los crea esta skill: se autoran server-side (IContentService/IMediaService detrás del flag DevSeed) con synergos-content-fill y synergos-media-upload.
 model: claude-opus-4-8
 ---
 
@@ -31,6 +31,11 @@ Skill integral que cubre tres capas en un solo flujo:
 - **No seeders en boot** (ADR 0013) — content creation solo cuando el usuario invoca esta skill.
 - **Alt text obligatorio** en toda imagen subida (WCAG 1.1.1).
 - **Compositions reservadas** — skipear si `<Description>` arranca con `[Bloqueado externamente -` o `[Disponible — sin consumers`.
+- **Primero: ¿funcionalidad o pieza?** (ADR 0134, `CLAUDE.md` §0.C del CMS). De eso depende qué campos
+  lleva el ElementType: una funcionalidad recibe **cableado**, no su configuración por el editor; una
+  pieza recibe contenido y decisiones, y **monta su gemela del design system**. → `synergos-funcionalidad`
+- **Las claves que emite la vista SynHost son las que conserva el sanitizador del elemento**, no los
+  alias de uSync. Si difieren, el SSR se ve bien y la hidratación lo borra (D1). → §5B, §6C
 
 ---
 
@@ -148,6 +153,20 @@ Para DTSelect*, leer el DataType desde `uSync/v9/DataTypes/DTSelect{Name}.config
 ## 3. Decisión: reusar vs crear nuevo
 
 **ANTES de proponer crear algo nuevo**, recorrer este árbol:
+
+### Antes que nada: qué es, y si ya existe por su DATO y su CONCEPTO
+
+1. **¿Funcionalidad o pieza?** Se clasifica por **qué necesita recibir para funcionar** (doc 12
+   §5.11 del CMS): si le hace falta configuración de negocio o técnica, es una funcionalidad. Se
+   escribe en el ticket con su razón (`synergos-funcionalidad` §1).
+2. **¿Un elemento publicado ya lo hace?** Se contesta por el **DATO**, nunca por el nombre (doc 13
+   §5.bis): hoy, la vista `Views/Partials/SynHost/<X>.cshtml` y el sanitizador de su `.ts` leídos
+   juntos; mañana, el `record` de ADR 0135 (Propuesta). Reusar un elemento con D1 hereda el defecto.
+3. **Si es una pieza: ¿el design system ya tiene el concepto?** Se busca por **lo que hace** entre
+   `platforms/angular/libs/shared/src/components/` de la UI, **incluidas las piezas que no usa
+   nadie** (vocabulario, no restos: `synergos-funcionalidad` §4.1). Si existe, el elemento nuevo la
+   **monta**; si le falta algo, se mejora; si hay dos del mismo concepto, se fusionan.
+4. **Nada de lo que encuentres sin consumidor se propone retirar** (ADR 0134 §3).
 
 ### Para una Composition nueva
 
@@ -287,7 +306,9 @@ Write-Output "GUID verificado: $g — 0 colisiones"
       <LabelOnTop>false</LabelOnTop>
       <Variations>Culture</Variations>
     </GenericProperty>
-    <!-- Override de config CDN (siempre presente en elementSyn*) -->
+    <!-- Override de config CDN: hoy todo elementSyn* lo lleva (ADR 0015 §1). NO es el canal de la
+         configuración de una funcionalidad (CLAUDE.md §0.C.20); la ADR 0135, propuesta, lo saca de
+         las funcionalidades. Si el elemento lo necesita para arrancar, lo que falta es cableado. -->
     <GenericProperty>
       <Key>{KEY-PROP-3}</Key>
       <Name>Config Override (JSON)</Name>
@@ -447,7 +468,9 @@ Write-Output "GUID verificado: $g — 0 colisiones"
 @model IPublishedElement
 @inject Synergos.CMS.Interfaces.ISynHostEmitter Emitter
 @{
-    // — Extraer props del ElementType —
+    // — Extraer props del ElementType. Las CLAVES del diccionario de abajo son las que conserva
+    //   el sanitizador del elemento (§6C), no los alias de uSync: si difieren, D1 —
+    //   SynHost/KpiCard.cshtml mandaba kpiLabel y kpi-card lee label. —
     var heading = Model.Value<string>("heading") ?? "";
     var body    = Model.Value<string>("body") ?? "";
     var media   = Model.Value<IPublishedContent>("media");
@@ -476,7 +499,19 @@ Write-Output "GUID verificado: $g — 0 colisiones"
 **Notas de implementación:**
 - `BlockAlias` debe coincidir con el `name` registrado en `registry.json` (kebab, sin prefijo `synergos-`).
 - Si el CDN bundle no está publicado, `StubBundleRegistryClient` retorna null → `EmitAsync` emite un placeholder HTML comment. No hay error, solo silencio en UI.
-- `configOverride` permite al editor forzar props en JSON — propagado by value al Web Component.
+- `configOverride` permite al editor forzar props en JSON: se fusiona **encima** de las props y, si
+  no parsea, se descarta **en silencio** (`DefaultSynHostEmitter`). No se usa para configurar una
+  funcionalidad (`synergos-funcionalidad` §2).
+- El emitter agrega `culture` a todo `config`; hoy no la lee ningún elemento (el bridge ya la lleva).
+- **Las claves del diccionario `props` son un contrato con el sanitizador del elemento.** Se
+  comprueban **ejecutando**: un spec del elemento con el `config` exacto que emite esta vista
+  (`synergos-contract-drift` §7.3) y, en vivo, `synergos-app-verify` §4.bis. `dotnet build` no
+  compila las vistas: `node tools/compilan-las-vistas.mjs` en el CMS.
+- Textos fijos del respaldo SSR (una etiqueta, un `aria-label`): `Umbraco.GetDictionaryValue` con
+  una clave que **existe** en `uSync/v9/Dictionary/`. Ojo: `node tools/usync-audit.mjs` sólo
+  avisa de las llamadas **sin** respaldo; con respaldo, una clave que falta no rompe nada y sale
+  siempre el texto de la vista — parece traducida y no lo está. Y el elemento, al hidratar, tiene
+  que decir lo mismo: si traduce con `t()`, la misma clave (ADR 0136, Propuesta; UI regla 44).
 
 ### 5C. Layout Renderer (Block Grid con Areas)
 
@@ -556,14 +591,38 @@ uno para todo el CDN (`tools/lib/cdn-size-budget.mjs`), no un campo del elemento
 
 ### 6C. {name}.ts — Componente principal (standalone, zoneless, signal inputs)
 
-```typescript
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+La vista SynHost no manda un atributo por propiedad: manda **un** atributo `config` con un JSON
+(`<synergos-x config='{…}'>`, `DefaultSynHostEmitter`). Lo que el elemento lee de ahí lo decide su
+**sanitizador**, y esa es la forma que tiene que emitir la vista (§5B). Es la forma de los elementos
+vivos (por ejemplo `kpi-card`), no la de un input por alias de uSync:
 
-/**
- * Web Component scaffold for <synergos-{kebab}>.
- * CMS element: elementSyn{Pascal}.
- * Each CMS property alias becomes a TypeScript input.
- */
+```typescript
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import {
+  coerceTrimmedStringInput,
+  createConfigInputTransform,
+  omitUndefinedProperties,
+} from '@synergos/shared';
+
+/** Lo que el elemento CONSERVA del `config` que emite `SynHost/{Pascal}.cshtml`. */
+export interface {Pascal}Config {
+  readonly heading?: string;
+  readonly body?: string;
+  readonly imageSrc?: string;
+  readonly ctaLabel?: string;
+  readonly ctaUrl?: string;
+}
+
+function sanitize{Pascal}Config(value: Partial<{Pascal}Config>): {Pascal}Config {
+  return omitUndefinedProperties<{Pascal}Config>({
+    heading: coerceTrimmedStringInput(value.heading),
+    body: coerceTrimmedStringInput(value.body),
+    imageSrc: coerceTrimmedStringInput(value.imageSrc),
+    ctaLabel: coerceTrimmedStringInput(value.ctaLabel),
+    ctaUrl: coerceTrimmedStringInput(value.ctaUrl),
+  });
+}
+
 @Component({
   selector: 'sg-{kebab}',
   standalone: true,
@@ -573,41 +632,40 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
   host: { class: 'sg-{name}' },
 })
 export class {Pascal}ElementComponent {
-  // Mirror de cada prop del ElementType (alias = nombre del input)
-  readonly heading       = input<string | undefined>(undefined);
-  readonly body          = input<string | undefined>(undefined);
-  readonly imageSrc      = input<string | undefined>(undefined);
-  readonly ctaLabel      = input<string | undefined>(undefined);
-  readonly ctaUrl        = input<string | undefined>(undefined);
-  readonly configOverride = input<string | undefined>(undefined);
-  // compDom* (siempre presentes en elementSyn*)
-  readonly cssClass      = input<string | undefined>(undefined);
-  readonly variantKey    = input<string | undefined>(undefined);
+  readonly config = input<{Pascal}Config | undefined, unknown>(undefined, {
+    transform: createConfigInputTransform<{Pascal}Config>(sanitize{Pascal}Config),
+  });
+  readonly heading = computed(() => this.config()?.heading ?? '');
+  readonly body = computed(() => this.config()?.body ?? '');
 }
 ```
 
 **Reglas:**
-- `readonly propName = input<string | undefined>(undefined)` — siempre string o undefined (los Web Component attrs son strings).
-- Un input por prop del ElementType (aliases idénticos al uSync).
-- NO usar `@Input()` decorator ni `BehaviorSubject`. Solo signal inputs.
-- Si la prop es booleana en CMS (TrueFalse), el attr llega como `"true"`/`"false"` string — parsear en template.
+- **Las claves del sanitizador y las de la vista SynHost son las mismas**, y se prueba con un spec
+  que le da al elemento el `config` **exacto** que emite la vista —`setInput('config', '<el JSON
+  de la vista>')`—, no el que el elemento espera (UI regla 43, `synergos-contract-drift` §7.3). Un
+  comentario que diga «cada propiedad del CMS es un input con el mismo alias» no lo prueba: `kpi-card`
+  lo decía y tenía D1.
+- Solo signal inputs (`input()`, `computed()`); nada de `@Input()` ni `BehaviorSubject`.
+- **Si es una pieza con gemela en el DS, la plantilla la MONTA** (`<syn-x>` + el import de su
+  clase), no la reimplementa (§6D; ADR 0134 §4).
+- **Si es una funcionalidad, sus textos van por `t()`** (`import { t } from '@synergos/vitals-core'`,
+  `t('Seccion.Clave', 'respaldo es-CO')`) con la clave en un prefijo que el bridge publica, y a sus
+  hojas les pasa strings (UI regla 44). La identidad, de `getMember()` del mismo paquete, no de un
+  campo del editor.
+- Un mensaje de evento (agregado, copiado, cargado) va por `LiveAnnouncerService`, no por una
+  región que nace dentro de un `@if` (UI regla 42).
 
 ### 6D. {name}.html — Template placeholder
 
 ```html
 <!--
-  Placeholder de {Pascal}. El diseño visual va aquí o en una
-  implementación real del componente.
+  Placeholder de {Pascal}. Si el concepto tiene gemela en el design system,
+  esto se reemplaza por la pieza montada (<syn-…>), no se rehace a mano.
 -->
-<div
-  class="sg-{name}__placeholder"
-  [class]="cssClass() ?? ''"
-  [attr.data-variant]="variantKey() ?? null"
-  role="region"
-  [attr.aria-label]="heading() ?? 'synergos-{kebab}'"
->
-  @if (imageSrc()) {
-    <img [src]="imageSrc()" [alt]="heading() ?? ''" class="sg-{name}__image" />
+<div class="sg-{name}__placeholder" role="region" [attr.aria-label]="heading() || null">
+  @if (config()?.imageSrc) {
+    <img [src]="config()?.imageSrc" [alt]="heading()" class="sg-{name}__image" />
   }
   <div class="sg-{name}__content">
     @if (heading()) {
@@ -616,12 +674,15 @@ export class {Pascal}ElementComponent {
     @if (body()) {
       <p class="sg-{name}__body">{{ body() }}</p>
     }
-    @if (ctaLabel() && ctaUrl()) {
-      <a [href]="ctaUrl()" class="sg-{name}__cta">{{ ctaLabel() }}</a>
+    @if (config()?.ctaLabel && config()?.ctaUrl) {
+      <a [href]="config()?.ctaUrl" class="sg-{name}__cta">{{ config()?.ctaLabel }}</a>
     }
   </div>
 </div>
 ```
+
+Las clases y variantes de `compDom*` las aplica el envoltorio SSR (`SynHost/_Wrapper`), no el
+elemento.
 
 ### 6E. {name}.scss — Estilos mínimos
 
@@ -635,22 +696,22 @@ export class {Pascal}ElementComponent {
 .sg-{name}__placeholder {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 2rem;
-  border: 1px dashed #cbd5e1;
-  border-radius: 0.5rem;
-  background: #f8fafc;
+  gap: var(--syn-space-md, 1rem);
+  padding: var(--syn-space-xl, 2rem);
+  border: 1px dashed var(--syn-color-border-default, #cbd5e1);
+  border-radius: var(--syn-radius-md, 0.5rem);
+  background: var(--syn-color-surface-default, #f8fafc);
 }
 
 .sg-{name}__heading {
   font-size: clamp(1.5rem, 4cqi, 3rem);
   font-weight: 700;
-  color: #0f172a;
+  color: var(--syn-color-text-primary, #0f172a);
   margin: 0;
 }
 
 .sg-{name}__body {
-  color: #475569;
+  color: var(--syn-color-text-secondary, #475569);
   margin: 0;
 }
 
@@ -658,19 +719,23 @@ export class {Pascal}ElementComponent {
   width: 100%;
   height: auto;
   object-fit: cover;
-  border-radius: 0.25rem;
+  border-radius: var(--syn-radius-sm, 0.25rem);
 }
 
 .sg-{name}__cta {
   display: inline-block;
-  padding: 0.625rem 1.25rem;
-  background: #0f58a7;
-  color: #fff;
+  padding: var(--syn-space-sm, 0.625rem) var(--syn-space-lg, 1.25rem);
+  background: var(--syn-color-brand-500, #0f58a7);
+  color: var(--syn-color-text-on-brand, #fff);
   text-decoration: none;
-  border-radius: 0.25rem;
+  border-radius: var(--syn-radius-sm, 0.25rem);
   font-weight: 500;
 }
 ```
+
+Todo color, espacio y radio por token `--syn-*` con respaldo (ADR 0094): un HEX fijo no sigue el
+tema del siteRoot, y es uno de los defectos que la auditoría encontró en piezas del design system
+(ADR 0134, consecuencias). Los nombres, de `docs/contracts/css-tokens.md` del CMS.
 
 ### 6F. app.config.ts
 
@@ -703,21 +768,12 @@ que haya en `dist/`. Editarlo a mano se pisa en la próxima publicación. Public
 
 ### 6I. Actualizar vitals/contracts/
 
-Agregar al final de `vitals/contracts/src/elements-syn.contract.ts`:
-
-```typescript
-/** elementSyn{Pascal} — tier:{tier} → tag:<synergos-{kebab}> */
-export interface Syn{Pascal}Schema {
-  readonly heading?: string;
-  readonly body?: string;
-  readonly imageSrc?: string;
-  readonly ctaLabel?: string;
-  readonly ctaUrl?: string;
-  readonly cssClass?: string;
-  readonly variantKey?: string;
-  readonly configOverride?: string;
-}
-```
+`vitals/contracts/src/elements-syn.contract.ts` **no se edita a mano**: su cabecera dice
+`AUTO-GENERATED by tools/cms-sync.mjs` y se regenera del XML de uSync con `npm run cms:sync` en la
+UI (`npm run cms:sync:check` para ver si está al día). Y lo que describe es el **ElementType**, no
+lo que viaja: su `Syn{Pascal}Schema` mete también las pestañas como propiedades y no coincide con lo
+que emite la vista en varios elementos (ADR 0135, contexto). Sirve para ver qué edita el editor; la
+forma de `config` es el sanitizador de §6C.
 
 Agregar al `element-registry.json`:
 ```json
@@ -755,8 +811,14 @@ El contenido editorial y la media se autoran **server-side** (ADR 0093): `IConte
 - [ ] Se avisó al arquitecto para hacer uSync Import manual
 - [ ] Si es `elementSyn*`: Razor wrapper + SynHost renderer creados (§5A, §5B)
 - [ ] Si es `elementSyn*` CDN: Angular component creado (§6) + entrada en `element-registry.json` (6I)
-- [ ] `vitals/contracts/src/elements-syn.contract.ts` actualizado
-- [ ] Publicado con `synergos-cdn-build` y verificado que hidrata (`synergos-app-verify`)
+- [ ] `vitals/contracts/src/elements-syn.contract.ts` regenerado con `npm run cms:sync`, no editado
+- [ ] Clasificado como funcionalidad o pieza, con su razón escrita en el ticket (§3)
+- [ ] Buscado por concepto en el design system antes de crear; si hay gemela, el elemento la monta
+- [ ] Las claves de la vista SynHost = las que conserva el sanitizador, con el spec del `config`
+      exacto de la vista (D1, §5B/§6C)
+- [ ] Una funcionalidad no depende de `configOverride` para arrancar; sus textos van por `t()`
+- [ ] Publicado con `synergos-cdn-build` y verificado que hidrata **y muestra lo del editor**
+      (`synergos-app-verify` §3 y §4.bis)
 
 ### Si hizo falta contenido:
 - [ ] Lo autoró `synergos-content-fill` y pasó SU checklist (§9 de esa skill)
@@ -785,4 +847,5 @@ El contenido editorial y la media se autoran **server-side** (ADR 0093): `IConte
 - `Synergos.CMS.Web/docs/adr/` — los ADRs ratificados (su `README.md` es el índice)
 - `synergos-architect/references/ui-elements-catalog.md` — foto de los bundles publicados (la lista viva: `npm run catalog` en la UI)
 - `synergos-architect/references/cms-to-ui-mapping.md` — alias CMS ↔ tag DOM ↔ bundle URL
-- `vitals/contracts/src/elements-syn.contract.ts` — schema mirrors TS
+- `vitals/contracts/src/elements-syn.contract.ts` — espejo TS del ElementType, generado (`npm run cms:sync`); no es la forma de `config`
+- `synergos-funcionalidad` — qué se coloca, qué le llega y cómo se comprueba (ADR 0134-0139)

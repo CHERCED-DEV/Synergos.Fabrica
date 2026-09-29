@@ -1,6 +1,6 @@
 ---
 name: synergos-ticket-first
-description: El proceso de trabajo de Synergos — nada se codifica sin ticket. Cubre los cuatro tipos (Defecto, Evolutivo, Mejora, Hallazgo), las cuatro preguntas del refinamiento, el umbral de qué bloquea y qué no, la regla anti-descarrilamiento (lo que encontrás haciendo otra cosa se anota como comentario del ticket abierto y se sigue; issue aparte solo si es trabajo separado de verdad), y las dos escrituras que hacen que el proyecto aprenda. Aplica a los TRES árboles — CMS, capacidades/orquestadores y Synergos.UI. Invocar al encontrar un bug o una mejora, antes de abrir un PR, o al empezar cualquier trabajo que no tenga ticket.
+description: El proceso de trabajo de Synergos — nada se codifica sin ticket. Cubre los cuatro tipos (Defecto, Evolutivo, Mejora, Hallazgo), las cuatro preguntas del refinamiento, el umbral de qué bloquea y qué no, la regla anti-descarrilamiento (lo que encontrás haciendo otra cosa se anota como comentario del ticket abierto y se sigue; issue aparte solo si es trabajo separado de verdad), las dos escrituras que hacen que el proyecto aprenda, el prerrequisito de poder escribir en GitHub (el remoto de los repos es el alias SSH github-cherced, la cuenta CHERCED-DEV; la entrada github.com de la máquina es otra cuenta), que un aviso de orden de merge en prosa no es un gate, y que la decisión de producto va antes que el gate. Aplica a los TRES árboles — CMS, capacidades/orquestadores y Synergos.UI. Invocar al encontrar un bug o una mejora, antes de abrir un PR, o al empezar cualquier trabajo que no tenga ticket.
 ---
 
 # SYNERGOS Ticket-First — el ticket va antes que el código
@@ -149,3 +149,48 @@ es la definición de hecho:
 
 Cada repo tiene su propio `.github/ISSUE_TEMPLATE/` y su gate: las plantillas de GitHub no se
 comparten entre repositorios.
+
+---
+
+## 6. Antes de empezar: poder escribir en GitHub
+
+«Ticket antes que código» **depende de poder escribir en GitHub**, y la auditoría de reutilización
+(#172) arrancó sin poder: el MCP sin token de escritura y `gh` sin sesión. Es un prerrequisito del
+arranque de sesión, no algo que se descubre al querer abrir el ticket.
+
+```bash
+git -C "$cms" remote -v   # $cms, $ui: synergos-guardrails/references/entorno.md
+git -C "$ui"  remote -v
+gh auth status
+```
+
+- **El remoto de los repos Synergos es el alias SSH `github-cherced`** —la cuenta CHERCED-DEV—:
+  `git@github-cherced:CHERCED-DEV/<repo>.git`. La entrada `github.com` de la máquina es la **cuenta
+  de trabajo**: un remoto `git@github.com:…` empuja con la identidad equivocada o no empuja. Si el
+  remoto no es el alias, se corrige el remoto; no se toca la configuración SSH de la máquina.
+- `gh auth status` tiene que mostrar la cuenta CHERCED-DEV activa, con permiso de escribir en el
+  repo. Si no, **se dice**: el ticket se redacta igual (tipo, las preguntas de §2) y se le entrega
+  al arquitecto para que lo abra; no se codifica «mientras tanto» como si existiera.
+- Ninguna credencial se escribe en un fichero, un commit ni un chat: la sesión la da `gh auth` o
+  el cliente del MCP.
+
+## 7. Un aviso en prosa no es un gate
+
+Un PR que depende de otra cosa —otro repo publicado, un lock que tiene que resolver, un merge
+anterior— **no se protege escribiendo «no mergear antes»** en su mensaje: el #141 lo escribió con
+todas las letras, se mergeó igual, y el CMS y la UI se quedaron sin skills con todo en verde
+(`CLAUDE.md` §5 del CMS, `feedback_a_merge_order_warning_in_prose_is_not_a_gate`). La pregunta,
+antes de abrir el PR:
+
+> **¿Qué se pone ROJO si lo de fuera no está?**
+
+Si la respuesta es «nada», el orden es una esperanza. Las dos salidas honestas: que la dependencia
+exista antes de abrir el PR, o que el PR traiga el gate que la exige.
+
+## 8. La decisión de producto va antes que el gate
+
+Un gate mide (alcance, consumidores, cobertura); **qué hacer** con lo que mide es una decisión, y
+no la toma un agente ni la toma el gate. La auditoría proponía «retirar doce» como salida por
+defecto de un gate de alcance, y el arquitecto lo rechazó: el catálogo es vocabulario (ADR 0134
+§3). Cuando un ticket nace de un gate, el ticket **pregunta** la decisión —usar, mejorar, fusionar,
+declarar, retirar con evidencia— en vez de traerla tomada.

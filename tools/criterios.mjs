@@ -121,7 +121,9 @@ const HERRAMIENTAS_MUERTAS = [
   { que: 'Management API (recurso)', re: /\/v1\/(?:document|media|member|document-type|data-type|media-type)\b|(?:^|[\s`(])\/(?:document|member|media)\/\{[^}]+\}/g },
   { que: 'NX (comando)', re: /\bnpx\s+nx\b|(?<![\w/.-])nx\s+(?:build|serve|run|run-many|generate|g|show|affected|test|lint)\b/g },
   { que: 'NX (descriptor)', re: /\b(?:project|nx)\.json\b/g },
-  { que: 'NX (nombre)', re: /(?<![\w./-])(?:Nx|NX)(?![\w-])/g },
+  // Sin `/` en el lookbehind: «Angular/NX» es el nombre (caso real de ticket-first). Las rutas con
+  // nx van en minúscula (`node_modules/nx/…`), y este patrón distingue mayúsculas.
+  { que: 'NX (nombre)', re: /(?<![\w.-])(?:Nx|NX)(?![\w-])/g },
 ];
 
 // (b) invocaciones que se comprueban contra el disco
@@ -143,7 +145,9 @@ const SUSTANTIVOS = [
   'servicios', 'orquestadores', 'c[oó]digos de rechazo', 'rechazos', 'checks', 'chequeos',
   'comprobaciones', 'repos', 'repositorios', 'plataformas', 'frameworks', 'hostnames',
   'componentes', 'primitives', 'primitivos', 'patterns', 'tiers', 'entradas', 'tags',
-  'apps', 'l[ií]neas de arn[eé]s', 'memorias', 'catalogs',
+  'apps', 'l[ií]neas de arn[eé]s', 'memorias', 'catalogs', 'presets?', 'layout presets', 'interfaces',
+  // el sustantivo elidido: «Con 107 escritos», «los 122 existentes» (dos casos reales del árbol)
+  'escritos', 'existentes', 'ratificados',
 ].join('|');
 const NUMERO_EN_PALABRAS = 'dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|diecis[eé]is|diecisiete|dieciocho|diecinueve|veinte|treinta|cuarenta|cincuenta|cien';
 /**
@@ -583,10 +587,12 @@ const CASOS = [
     cuerpo: '| ❌ Nunca | ✅ En su lugar |\n|---|---|\n| `npx nx build x` | `npm run build:cdn` |\n\n| Acción | Alternativa |\n|---|---|\n| Borrar nodos en SQL | Usar `DELETE /document/{key}` |' },
   { nombre: 'b-contra-el-disco', espera: { b: 2 },
     cuerpo: '```bash\nnpm run release:angular\nnpm run build:cdn\nnpm run --prefix platforms/angular build\nnode tools/usync-audit.mjs\nnode tools/no-existe.mjs\n```' },
-  { nombre: 'b-nx', espera: { b: 1 },
-    cuerpo: 'Compilá con `npx nx build elements-x`.\n\nSin Nx desde la purga: el build es de `platforms/angular/tools/`.' },
+  { nombre: 'b-nx', espera: { b: 2 },
+    cuerpo: 'Compilá con `npx nx build elements-x`.\n\nSin Nx desde la purga: el build es de `platforms/angular/tools/`.\n\nEl árbol de la UI (Angular/NX) tiene su propio gate.\n\nEl esquema vive en `node_modules/nx/schemas`.' },
   { nombre: 'c-cifras', espera: { c: 3 },
     cuerpo: 'El catálogo tiene 122 bundles publicados.\n\n## Primitives (31)\n\nSon tres repos.' },
+  { nombre: 'c-sustantivo-elidido', espera: { c: 2 },
+    cuerpo: 'Con 107 escritos, el formato tiene que ser uno.\n\nLos 122 existentes son lo que hay.' },
   { nombre: 'c-citada-o-historica', espera: {},
     cuerpo: 'El catálogo decía 122 elementos, y la cita «122 bundles» es de otro.\n\nUn umbral de 50 no es una cifra del árbol.' },
   { nombre: 'a-no-no-cruza-la-coma', espera: { a: 1 },

@@ -6,8 +6,9 @@
 # mide nada.
 #
 # Qué NO comprueba: que lo que una skill afirma siga siendo cierto en los otros dos repos más allá
-# de que las herramientas que nombra existan. Eso es el gate del arnés (CHERCED-DEV/Synergos.CMS#142).
-# Se dice acá porque el peor efecto de un CI parcial es que alguien deje de mirar confiando en él.
+# de que las herramientas que nombra existan, de las ADR que cita y del pin de Umbraco. Eso es el
+# gate del arnés (CHERCED-DEV/Synergos.CMS#142), que tiene dientes pendientes (ver el README). Se
+# dice acá porque el peor efecto de un CI parcial es que alguien deje de mirar confiando en él.
 #
 # Por qué clona Synergos.CMS y Synergos.UI: el criterio (b) comprueba cada `npm run`, `node x.mjs`
 # y `dotnet … x.csproj` contra el DISCO de esos dos árboles. Sin ellos el medidor sale con 2 en vez
@@ -102,6 +103,16 @@ jobs:
       # publicado ya la traiga; en una rama de trabajo, que la traiga su rama homónima.
       - name: ADRs citadas por las skills
         run: node --test tests/adrs-citadas.test.mjs
+        env:
+          SYNERGOS_CMS_PATH: ${{ github.workspace }}/_hermanos/Synergos.CMS
+          SYNERGOS_UI_PATH: ${{ github.workspace }}/_hermanos/Synergos.UI
+
+      # El gate del lock (#142): el paso de `consumidor/arnes.yml` que trae el SHA del lock, ejecutado
+      # tal como está en el YAML contra repos locales, y `tools/lock.mjs`. Incluye las frases del pin
+      # de Umbraco de guardrails contra el CMS clonado: una frase reescrita se pone roja ACÁ, en el
+      # commit que la reescribe, y no en el CI del CMS el día que alguien re-fija el lock.
+      - name: El gate del lock
+        run: node --test tests/lock.test.mjs
         env:
           SYNERGOS_CMS_PATH: ${{ github.workspace }}/_hermanos/Synergos.CMS
           SYNERGOS_UI_PATH: ${{ github.workspace }}/_hermanos/Synergos.UI

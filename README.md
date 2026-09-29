@@ -34,6 +34,9 @@ lo contiene.
 | `tools/criterios.mjs` | el medidor de los cuatro criterios de rechazo del #141 |
 | `tests/estructura.test.mjs` | los tests de estructura (`node:test`, sin dependencias) |
 | `tests/adrs-citadas.test.mjs` | que toda ADR que una skill cita exista en el CMS, y que el estado que le atribuye (Aceptada/Propuesta) sea el de su fichero |
+| `consumidor/arnes.yml` | el workflow que cada consumidor **copia** a su `.github/workflows/arnes.yml`: trae el SHA de su lock y corre `tools/lock.mjs` desde ese SHA (#142) |
+| `tools/lock.mjs` | lo que el arnés afirma de un consumidor: que su lock nombra este plugin, que su copia del workflow es la de este SHA y —en el CMS— que las frases del pin de Umbraco de `synergos-guardrails` dicen la rama de su `Directory.Packages.props` |
+| `tests/lock.test.mjs` | el paso del workflow ejecutado contra repos locales, y `tools/lock.mjs` con sus mutaciones |
 | `.github/workflows/estructura.yml` | el CI: autoprueba, medidor y tests, en Ubuntu y Windows |
 
 ## Instalarlo
@@ -71,8 +74,18 @@ Cada repo de código tiene en su raíz un `arnes.lock.json`, **idéntico en los 
   agente entre dos corridas del mismo PR, y eso no se lee como «cambió el arnés» sino como «el
   agente es inconsistente».
 - **Por qué un fichero y no la instalación:** un plugin se instala por máquina, así que un runner
-  de CI no lo tiene. CI clona el `sha` del lock; el gate del arnés (#142) lo cruza contra el
-  remoto. Ese gate es el que habría cazado el #171: el lock apuntaba a un commit que no existía.
+  de CI no lo tiene. El workflow `arnes.yml` de cada consumidor **trae ese SHA** del remoto
+  (`git fetch --depth 1 <repo> <sha>`) en cada push a `main`/`master`, en cada PR y cada día; si
+  no está, rojo con qué hacer. Es el diente que habría cazado el #171: el lock apuntó durante días a
+  un commit que no existía.
+- **Dónde vive cada pedazo, y por qué:** lo que comprueba que el SHA existe **no puede venir de
+  ese SHA**, así que ese paso —y sólo ése— está en el YAML. Todo lo demás es `tools/lock.mjs`, que
+  el workflow corre **desde el SHA que trajo**: una sola copia, en la versión que cada consumidor
+  fija. El YAML sí está copiado en los dos consumidores, y por eso `tools/lock.mjs` compara cada
+  copia con `consumidor/arnes.yml` de ese SHA: es una copia vigilada, no dos que divergen (#141).
+  Descartado: un workflow reutilizable (`uses: …/arnes.yml@main`) cambia el CI de los consumidores
+  sin un commit suyo, que es lo que el pin existe para impedir; fijarlo por SHA en el `uses:` es un
+  segundo pin que diverge del lock.
 - **En una máquina**, `/plugin marketplace add <url>#<ref>` fija una rama o un tag (así lo
   documenta Claude Code); fijar por SHA no está documentado. Si hace falta que una máquina
   reproduzca exactamente el lock, la forma documentada es un tag por cada SHA que se fija.
@@ -84,7 +97,9 @@ Cada repo de código tiene en su raíz un `arnes.lock.json`, **idéntico en los 
    `gh api repos/CHERCED-DEV/Synergos.Fabrica/commits/<sha>` tiene que contestar, no 404.
    Sin este paso se repite el #171.
 3. Se actualiza `sha` en el `arnes.lock.json` de **los dos** repos, y el diff va en el commit que lo
-   causó — como cualquier lock.
+   causó — como cualquier lock. Si `consumidor/arnes.yml` cambió, se copia a
+   `.github/workflows/arnes.yml` en el mismo commit: el CI del consumidor compara la copia con la
+   del SHA que fija, y sale rojo si difieren.
 
 ## Las reglas
 
@@ -116,6 +131,8 @@ node tools/criterios.mjs --autoprueba     # el medidor contra sus propios fixtur
 node tools/criterios.mjs                  # sobre skills/, contra los dos repos hermanos
 node --test tests/estructura.test.mjs     # la forma del plugin
 node --test tests/adrs-citadas.test.mjs   # las ADR citadas existen y su estado es el del disco
+node --test tests/lock.test.mjs           # el paso que trae el lock y tools/lock.mjs, mutados
+node tools/lock.mjs --consumidor=../Synergos.CMS --nombre=Synergos.CMS   # lo que corre el CI del CMS
 claude plugin validate .                  # el validador oficial del marketplace y el plugin
 ```
 
@@ -125,10 +142,13 @@ El medidor busca los dos repos en `--cms-path=` / `--ui-path=`, en `SYNERGOS_CMS
 
 ## Lo que este repo todavía no hace
 
-- **El gate del arnés (#142)** —que lo que una skill afirma siga siendo cierto, y que el lock de
-  cada consumidor resuelva contra el remoto— no está acá todavía, salvo **un diente**:
-  `tests/adrs-citadas.test.mjs` (#172) comprueba las ADR que las skills citan y el estado que les
-  atribuyen. Se pone rojo si el CMS clonado no tiene una ADR que una skill enseña —el CMS que la
-  trae se mergea antes— y el día que una ADR propuesta se acepta, en cada línea que la siga
-  llamando propuesta. El CI de este repo comprueba la
-  **forma**; no confíes en él para la deriva.
+- **El gate del arnés (#142) está a medias, y esto es lo que tiene:** el lock de cada consumidor
+  se resuelve contra el remoto y nombra este plugin, y su copia del workflow es la del SHA que fija
+  (`tools/lock.mjs`); las frases del pin de Umbraco de `synergos-guardrails` se cruzan contra el
+  CMS (en el CI del CMS y en el de acá); las ADR que las skills citan existen y tienen el estado que
+  les atribuyen (`tests/adrs-citadas.test.mjs`, #172); y los cuatro criterios del #141 dan cero
+  (`tools/criterios.mjs`). **Lo que no tiene**: una herramienta que existe y **nadie llama**
+  (el diente 3b, el caso de `refresh-skill-catalog`), que el consumidor no guarde una **copia** de
+  una skill de acá en su `.claude/skills/` (el diente 5), y que los cuatro criterios corran en el
+  CI de los consumidores —hoy sólo corren acá, contra los dos repos (su rama homónima o `master`),
+  en cada push y cada día—. No confíes en el CI de este repo para eso.

@@ -1,6 +1,6 @@
 ---
 name: synergos-adr-author
-description: Escribe un ADR (Architecture Decision Record) para Synergos siguiendo el formato exacto del proyecto. Asigna el número correcto (siguiente al más alto existente), genera el archivo en Synergos.CMS/Synergos.CMS.Web/docs/adr/, actualiza el índice §11.2 de refactor-docs/architecture/00-current-state-synergos-cms.md, y produce los DOS commits (viven en repos distintos). Invocar cuando se toma una decisión arquitectónica que debe quedar registrada.
+description: Escribe un ADR (Architecture Decision Record) para Synergos siguiendo el formato exacto del proyecto. Asigna el número correcto (siguiente al más alto existente), genera el archivo en Synergos.CMS/Synergos.CMS.Web/docs/adr/ con el formato del ADR más reciente, lo agrega en el mismo commit al índice versionado docs/adr/README.md (lo vigila AdrIndexTests) y a la cuenta de CLAUDE.md §2 (CifrasDeClaudeMdTests), y aparte, si la máquina lo tiene, al §11.2 de refactor-docs. Cubre cómo se escribe una ADR Propuesta con el piloto que la acepta —el molde de las 0135-0139— y cómo lleva sus cifras (con fecha, SHA base y marca de certeza). Invocar cuando se toma una decisión arquitectónica que debe quedar registrada.
 model: claude-opus-4-8
 ---
 
@@ -24,70 +24,90 @@ Los ADRs son la memoria del proyecto. Con tantos escritos, el formato y la numer
 
 ## 1. El número siguiente
 
-Los ADRs viven en `Synergos.CMS/Synergos.CMS.Web/docs/adr/` con nombre `NNNN-slug-en-ingles.md` (4 dígitos, **sin** prefijo `ADR-`), más un `README.md`.
+Los ADRs viven en `Synergos.CMS/Synergos.CMS.Web/docs/adr/` con nombre `NNNN-slug.md` (4 dígitos,
+**sin** prefijo `ADR-`), más un `README.md` que es el índice.
 
 ```bash
 ls Synergos.CMS/Synergos.CMS.Web/docs/adr/ | grep -E '^[0-9]{4}-' | sort | tail -1
 ```
 
-El siguiente es ese +1, con 4 dígitos. El **slug del archivo va en inglés** (`0107-in-memory-catalog-engine-and-deferred-examine.md`); **el contenido va en español**.
+El siguiente es ese +1, con 4 dígitos. **El idioma del slug y de los marcadores lo manda el ADR más
+reciente**, no esta skill: los primeros van en inglés (`0107-in-memory-catalog-engine-…`) y los
+recientes en español (`0134-tres-catalogos-y-dos-tipos-de-colocable-…`). El contenido, en español.
 
 ---
 
-## 2. El formato REAL — verificado contra los 107
+## 2. El formato — el del ADR más reciente
 
-> ⚠️ **Verificar siempre contra el ADR más reciente antes de escribir**, no contra este template: la convención puede haber evolucionado y este documento puede estar viejo.
+> ⚠️ **Verificar siempre contra el ADR más reciente antes de escribir**, no contra este template: la
+> convención ya cambió una vez y puede volver a cambiar.
 > ```bash
 > head -12 $(ls Synergos.CMS/Synergos.CMS.Web/docs/adr/[0-9]*.md | sort | tail -1)
+> grep -L -- '- \*\*Status:\*\*' Synergos.CMS/Synergos.CMS.Web/docs/adr/[0-9]*.md   # los que NO usan el formato en inglés
 > ```
 
+La forma de los recientes (0134-0139 son el molde):
+
 ```markdown
-# ADR NNNN — {Título en español, con el vertical/transversal entre paréntesis si aplica}
+# ADR NNNN — {Título en español: la decisión dicha como frase}
 
-- **Status:** Accepted
-- **Date:** YYYY-MM-DD
-- **Deciders:** {Quién y en qué contexto. Los ADRs recientes registran aquí cómo se produjo
-  la decisión — panel multi-agente, revisión adversarial, firma explícita del arquitecto —
-  porque eso es lo que le dice al lector futuro cuánto peso tiene.}
-- **Relacionados:** {ADR NNNN (por qué se relaciona), ADR NNNN (por qué), … + reglas del
-  proyecto que aplican, p.ej. "Regla de oro doc 25: ninguna capacidad transversal se
-  implementa dos veces".}
+- **Estado:** Aceptado | Propuesto — se acepta o se descarta con el piloto (ver al final)
+- **Fecha:** YYYY-MM-DD
+- **Decidido por:** {quién y en qué contexto} | **Propone:** {de dónde sale la propuesta}
+- **Parte de:** [#NNN](../../../../../issues/NNN) · épica [#NNN](…)
+- **Depende de / Conserva / Enmendaría / Aclararía:** {ADR NNNN — por qué}
 
----
+## Contexto
 
-## Context
+> Marcas de certeza: ✔ comprobado en el disco · ◐ medido por un agente con dos derivaciones o
+> ejecutando, sin re-derivar · ○ cifra de un agente sin verificar. «Re-leído» = línea abierta al
+> escribir este ADR (CMS `<sha>`, UI `<sha>`).
 
-## Decision
+## Decisión            (en una propuesta: «Decisión (propuesta)»)
 
-### {Sub-encabezados por decisión — los ADRs buenos tienen 3-6}
+### {Sub-encabezados por decisión}
 
-## Consequences
+## Alternativas consideradas
 
-**Positivas:**
-- …
+| alternativa | por qué no |
+|---|---|
 
-**Negativas o trade-offs:**
-- …
+## Consecuencias
 
-**Notas de implementación:**
-- …
+**A favor** · **En contra** (dicho de frente) · **Qué la vigila** (el gate que existe, o «por construir»)
 
-## Alternatives considered
+## Qué hace falta para aceptarla (el piloto)      ← sólo en una Propuesta
 
-## References
+## Relación con otras ADRs
+
+## Referencias
 ```
 
-**Marcadores: los del ADR más reciente** (el `head -12` de arriba), no los de esta skill. Ya
-cambiaron una vez: los anteriores usan `- **Status:**` · `- **Date:**` · `- **Deciders:**` ·
-`- **Relacionados:**` · `## Context` · `## Decision` · `## Consequences` ·
-`## Alternatives considered` · `## References` —la plantilla de arriba— y los más recientes
-`- **Estado:**` · `- **Fecha:**` · `## Contexto` · …. Cuántos usa cada formato se mide:
+Los anteriores al cambio usan `- **Status:**` · `- **Date:**` · `- **Deciders:**` · `## Context` ·
+`## Decision` · `## Consequences` · `## Alternatives considered` · `## References`: no se
+reescriben. **No hay campo `Ola:`**: el contexto de la ola va en el encabezado o en `Contexto`.
 
-```bash
-grep -L -- '- \*\*Status:\*\*' Synergos.CMS/Synergos.CMS.Web/docs/adr/[0-9]*.md   # los que NO usan el formato en inglés
-```
+### 2.1 Una ADR Propuesta — el molde de las 0135-0139
 
-**No hay campo `Ola:`.** El contexto de la ola va dentro de `Deciders:` o de `Context`.
+Una decisión que el arquitecto quiere registrar **antes** de construirla se escribe como
+**Propuesta**, con lo que la aceptaría o la descartaría:
+
+- `- **Estado:** Propuesto — se acepta o se descarta con el piloto`, y en el índice, `Proposed`.
+- Una sección **«Qué hace falta para aceptarla (el piloto)»** con criterios medibles: qué se
+  construye, qué se mide, **qué gates se mutan** y cómo se comprueba que cada mutación entró.
+- **«Enmendaría» / «Aclararía»**, en condicional: la ADR que cambiaría no se toca mientras sea
+  propuesta. Si se acepta, la otra recibe en su cabecera la marca («aclarada por la NNNN»), como
+  hizo la 0126 con la 0127.
+- **Ninguna skill, guía ni ADR la enseña como hecha**: se cita como «Propuesta» y se dice qué se hace
+  hoy (`synergos-funcionalidad` es el ejemplo).
+
+### 2.2 Las cifras en un ADR
+
+Un ADR es **historia**: una cifra ahí no está desviada, está **fechada** (lo dicen los `remarks` de
+`CifrasDeClaudeMdTests`, que por eso no mira `docs/adr/`). Pero tiene que poder comprobarse: cada
+cifra con su **marca de certeza** y su fuente, el **SHA base** de los repos en el encabezado del
+contexto, y `fichero:línea` re-leída para lo que decide. Una cifra de un agente sin verificar va con
+○, no se presenta como medida (`synergos-medir` §7).
 
 ---
 
@@ -112,40 +132,51 @@ Usar la herramienta Write directamente. **No** generar el contenido con here-str
 
 ---
 
-## 5. El índice §11.2 — DOS sitios que actualizar
+## 5. El índice — el versionado va en el MISMO commit que el ADR
 
-El índice **no** vive junto a los ADRs: vive en `refactor-docs/architecture/00-current-state-synergos-cms.md`, sección §11.2. Y tiene **dos partes**, las dos hay que tocarlas:
+**`docs/adr/README.md` es el índice** (`CLAUDE.md` §3 del CMS manda ahí la pregunta «¿por qué se
+tomó esta decisión?»), y **`AdrIndexTests`** lo cruza con el disco en los dos sentidos: un ADR sin
+fila rompe, y una fila que apunta a un fichero inexistente también. La 0133 estuvo aceptada y fuera
+del índice: un ADR que no está en esa tabla es un ADR perdido.
 
-1. **El encabezado en prosa** (una sola línea larguísima):
-   `## 11.2 ADRs ratificados — ahora hasta ADR NNNN (fase de lógica de negocio: ADR NNNN {resumen} — ADR NNNN-1 {resumen} — …)`
-   → cambiar `hasta ADR NNNN` y **anteponer** el resumen del nuevo al principio del paréntesis.
+1. **La fila en `docs/adr/README.md`**, al final: `| [NNNN](NNNN-slug.md) | {resumen denso} | Accepted \| Proposed |`
+   — el estado de la tabla va en inglés, como el resto de sus filas.
+2. **La cuenta de `CLAUDE.md` §2** del CMS (`N ADRs (0001-NNNN, sin 0016)` en el mapa del
+   proyecto): la cruza `CifrasDeClaudeMdTests`, con cifra **y** rango. Se cuenta del disco:
+   ```bash
+   ls Synergos.CMS/Synergos.CMS.Web/docs/adr/[0-9]*.md | wc -l
+   ```
+3. **Si tu máquina tiene `refactor-docs/`** (el repo contenedor, local, no versionado en el CMS): el
+   §11.2 de `architecture/00-current-state-synergos-cms.md` tiene encabezado en prosa y tabla densa.
+   Editar con Read + Edit o un script que busque la línea por prefijo (`startsWith('| 0106 |')`); un
+   `-replace` a ciegas corrompe el documento. **Puede ir atrasado** respecto del disco: lo que manda
+   es el README.
 
-2. **La fila de la tabla**, al final de la lista: `| NNNN | Título | {descripción larga} |`
-   → insertarla **después** de la fila del ADR anterior.
+Comprobarlo antes del commit, y mutarlo si se tocó el gate:
 
-La descripción de la tabla es **densa a propósito**: es el único sitio donde alguien que no abre el ADR ve la sustancia. Los recientes cierran con: commits · estado de la suite · ADRs relacionados · `0 GUIDs, 0 NuGet, 0 npm` (y `0 schema, 0 Import` si aplica).
-
-> **No automatizar esto con regex.** El encabezado es prosa libre y la tabla tiene descripciones de miles de caracteres con pipes y comillas dentro. Editar con Read + Edit, o con un script Node que busque la línea por prefijo (`startsWith('| 0106 |')`) e inserte. Un `-replace` a ciegas corrompe el documento.
+```bash
+cd Synergos.CMS
+dotnet test Synergos.Arquitectura.Tests/Synergos.Arquitectura.Tests.csproj --filter "FullyQualifiedName~AdrIndexTests|FullyQualifiedName~CifrasDeClaudeMdTests"
+```
 
 ---
 
-## 6. Los commits — SON DOS, en REPOS DISTINTOS
-
-⚠️ **La trampa que hace fallar el paso 5:** `Synergos.CMS/` es un repo git **propio**, y el repo raíz `synergos/` **lo ignora**. El ADR y el índice **no pueden ir en el mismo commit**.
+## 6. Los commits
 
 ```bash
-# 1) El ADR — repo Synergos.CMS
+# 1) El ADR, su fila del índice y la cuenta de CLAUDE.md — UN commit en Synergos.CMS, con rutas
 cd Synergos.CMS
-git add Synergos.CMS.Web/docs/adr/NNNN-*.md
-git commit -m "docs(adr): NNNN — {título corto}"
+git add -- Synergos.CMS.Web/docs/adr/NNNN-*.md Synergos.CMS.Web/docs/adr/README.md CLAUDE.md
+git commit -m "docs(adr): NNNN — {título corto}" -- Synergos.CMS.Web/docs/adr/NNNN-*.md Synergos.CMS.Web/docs/adr/README.md CLAUDE.md
 
-# 2) El índice — repo raíz
+# 2) Si existe: el §11.2 de refactor-docs — otro repo, otro commit
 cd ..
-git add refactor-docs/architecture/00-current-state-synergos-cms.md
-git commit -m "docs(arch): indice §11.2 — ADR NNNN ({tema})"
+git add -- refactor-docs/architecture/00-current-state-synergos-cms.md
+git commit -m "docs(arch): indice §11.2 — ADR NNNN ({tema})" -- refactor-docs/architecture/00-current-state-synergos-cms.md
 ```
 
-Formato observado en el repo: `docs(adr): NNNN — …` y `docs(arch): indice §11.2 — ADR NNNN (…)`.
+Varias ADRs en una tanda: **un commit por ADR**, cada uno con su fila y su cuenta, para que cada
+commit deje `AdrIndexTests` y `CifrasDeClaudeMdTests` en verde por sí solo.
 
 ---
 

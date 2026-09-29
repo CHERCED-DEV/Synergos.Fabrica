@@ -10,21 +10,21 @@ Esta skill detecta inconsistencias entre las 5 fuentes de verdad del schema:
 1. `uSync/v9/ContentTypes/` — XMLs de DocTypes/ElementTypes/Compositions
 2. `uSync/v9/DataTypes/` — XMLs de DataTypes
 3. `Views/Partials/SynHost/` — Razor renderers
-4. `Synergos.UI/platforms/angular/apps/elements/` — Angular projects
-5. `C:\LOCAL_CDN\synergos\registry.json` — bundles publicados
+4. `Synergos.UI/platforms/` — las fuentes de la UI (cada carpeta con `src/main.ts`)
+5. `$CDN_ROOT/registry.json` — bundles publicados (`synergos-guardrails/references/entorno.md`)
 
 ---
 
 ## 0. Rutas base
 
 ```powershell
-$repoRoot    = "C:\Users\HITMA\Desktop\synergos"
-$uSyncCT     = "$repoRoot\Synergos.CMS\Synergos.CMS.Web\uSync\v9\ContentTypes"
-$uSyncDT     = "$repoRoot\Synergos.CMS\Synergos.CMS.Web\uSync\v9\DataTypes"
-$synHostDir  = "$repoRoot\Synergos.CMS\Synergos.CMS.Web\Views\Partials\SynHost"
-$bgridDir    = "$repoRoot\Synergos.CMS\Synergos.CMS.Web\Views\Partials\blockgrid\Components"
-$angularDir  = "$repoRoot\Synergos.UI\platforms\angular\apps\elements"
-$registryPath = "C:\LOCAL_CDN\synergos\registry.json"
+# $cms, $ui, $cdnRoot, $base: synergos-guardrails/references/entorno.md
+$uSyncCT     = "$cms\Synergos.CMS.Web\uSync\v9\ContentTypes"
+$uSyncDT     = "$cms\Synergos.CMS.Web\uSync\v9\DataTypes"
+$synHostDir  = "$cms\Synergos.CMS.Web\Views\Partials\SynHost"
+$bgridDir    = "$cms\Synergos.CMS.Web\Views\Partials\blockgrid\Components"
+$uiPlatforms = Join-Path $ui "platforms"
+$registryPath = Join-Path $cdnRoot "registry.json"
 ```
 
 ---
@@ -148,28 +148,27 @@ $razorIssues | ForEach-Object { Write-Warning "  $_" }
 
 ---
 
-## 5. Cruzar ElementTypes contra Angular projects
+## 5. Cruzar ElementTypes contra las fuentes de la UI
+
+Se descubre lo mismo que compila el build: toda carpeta con un `src/main.ts` es un elemento, y su
+nombre de carpeta es su nombre. Los tiers no se listan (son carpetas en plural, y una lista a mano
+en singular fue la que dejó a `element-inventory` sin acertar nunca — #141).
 
 ```powershell
 $angularIssues = [System.Collections.Generic.List[string]]::new()
+
+$fuentes = @(Get-ChildItem $uiPlatforms -Recurse -Filter "main.ts" -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Directory.Name -eq "src" -and $_.FullName -notmatch "[\\/]node_modules[\\/]" } |
+    ForEach-Object { $_.Directory.Parent.Name })
+# Red de seguridad: cero fuentes es un descubrimiento roto, y marcaría TODO como faltante
+if ($fuentes.Count -eq 0) { throw "No encontré ningún src/main.ts bajo $($uiPlatforms): el paso está roto, no reportar." }
 
 foreach ($et in $elementTypes) {
     $pascal   = $et.Alias -replace '^elementSyn', ''
     $kebab    = ($pascal -creplace '(?<=[a-z])(?=[A-Z])', '-').ToLower()
     # elementSynHeroBanner → hero-banner
-    # Buscar en los tiers de Angular
-
-    $found = $false
-    foreach ($tier in @("primitive", "composition", "module", "experience")) {
-        $projectPath = "$angularDir\$tier\$kebab"
-        if (Test-Path $projectPath) { $found = $true; break }
-        # Intentar sin guiones también
-        $altPath = "$angularDir\$tier\$($kebab -replace '-','')"
-        if (Test-Path $altPath) { $found = $true; break }
-    }
-
-    if (-not $found) {
-        $angularIssues.Add("MISSING Angular project para $($et.Alias) (esperado: $kebab)")
+    if ($kebab -notin $fuentes) {
+        $angularIssues.Add("MISSING fuente en la UI para $($et.Alias) (esperado: una carpeta $kebab con src/main.ts)")
     }
 }
 

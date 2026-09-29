@@ -1,6 +1,6 @@
 ---
 name: synergos-element-inventory
-description: Genera un mapa cruzado completo de todos los elementos de Synergos — cruza uSync XMLs (ElementTypes), Razor views (SynHost + Block Grid wrappers), Angular projects (NX workspace), y bundles publicados (registry.json + LOCAL_CDN). Detecta elementos incompletos ("a medias") y los clasifica por nivel de completitud. Útil antes de una Ola para saber el estado real.
+description: Genera un mapa cruzado completo de todos los elementos de Synergos — cruza uSync XMLs (ElementTypes), Razor views (SynHost + Block Grid wrappers), las fuentes de la UI (cada carpeta con src/main.ts, lo mismo que compila build.mjs), y los bundles publicados (registry.json del CDN construido). Detecta elementos incompletos ("a medias") y los clasifica por nivel de completitud. Útil antes de una Ola para saber el estado real.
 model: claude-opus-4-8
 ---
 
@@ -10,20 +10,20 @@ Un elemento "completo" en Synergos tiene exactamente 5 capas presentes:
 1. **uSync XML** — `elementSyn*.config` (schema)
 2. **Block Grid wrapper** — `blockgrid/Components/elementSyn*.cshtml` (punto de entrada Razor)
 3. **SynHost renderer** — `SynHost/{Pascal}.cshtml` (delegación a ISynHostEmitter)
-4. **Angular project** — `Synergos.UI/platforms/angular/apps/elements/{tier}/{kebab}/`
-5. **Bundle publicado** — entrada en `registry.json` + archivo en `LOCAL_CDN/`
+4. **Fuente en la UI** — una carpeta `<kebab>/` con `src/main.ts` bajo `Synergos.UI/platforms/`
+5. **Bundle publicado** — entrada en `registry.json` + archivo en el CDN (`$CDN_ROOT`)
 
 ---
 
 ## 0. Rutas base
 
 ```powershell
-$repoRoot    = "C:\Users\HITMA\Desktop\synergos"
-$uSyncCT     = "$repoRoot\Synergos.CMS\Synergos.CMS.Web\uSync\v9\ContentTypes"
-$synHostDir  = "$repoRoot\Synergos.CMS\Synergos.CMS.Web\Views\Partials\SynHost"
-$bgridDir    = "$repoRoot\Synergos.CMS\Synergos.CMS.Web\Views\Partials\blockgrid\Components"
-$angularRoot = "$repoRoot\Synergos.UI\platforms\angular\apps\elements"
-$regPath     = "C:\LOCAL_CDN\synergos\registry.json"
+# $cms, $ui, $cdnRoot: synergos-guardrails/references/entorno.md
+$uSyncCT     = Join-Path $cms "Synergos.CMS.Web\uSync\v9\ContentTypes"
+$synHostDir  = Join-Path $cms "Synergos.CMS.Web\Views\Partials\SynHost"
+$bgridDir    = Join-Path $cms "Synergos.CMS.Web\Views\Partials\blockgrid\Components"
+$uiPlatforms = Join-Path $ui "platforms"
+$regPath     = Join-Path $cdnRoot "registry.json"
 ```
 
 ---
@@ -36,8 +36,8 @@ $elements = [System.Collections.Generic.List[PSCustomObject]]::new()
 Get-ChildItem $uSyncCT -Filter "elementSyn*.config" -Recurse | ForEach-Object {
     try {
         [xml]$xml   = Get-Content $_.FullName -Encoding UTF8
-        $alias      = $xml.ContentType.Attributes["Alias"]?.Value
-        $key        = $xml.ContentType.Attributes["Key"]?.Value
+        $alias      = $xml.ContentType.GetAttribute("Alias")
+        $key        = $xml.ContentType.GetAttribute("Key")
         $isElement  = $xml.ContentType.Info.IsElement
         $name       = $xml.ContentType.Info.Name
 
@@ -102,45 +102,44 @@ foreach ($el in $elements) {
 
 ---
 
-## 4. Paso 4 — Verificar Angular projects
+## 4. Paso 4 — Verificar las fuentes de la UI
+
+Se descubre **lo mismo que compila el build**: toda carpeta que tenga un `src/main.ts` es un
+elemento, y su nombre de carpeta es su nombre en `dist/` y en el CDN. Los tiers no se listan: salen
+de la ruta.
+
+> Aquí vivía un descubrimiento con **dos pasadas rotas en fila, que no fallaba**: la primera probaba
+> tiers en singular contra carpetas que son plurales (no acertaba nunca) y la segunda enumeraba el
+> descriptor por proyecto que la purga de 2026-08-04 se llevó. Resultado: cero fuentes, «sin
+> Angular» sobre elementos publicados, y un informe con aspecto de informe (#141). Por eso la red de
+> seguridad de abajo **falla**, y se mide contra el disco, no contra una cifra.
 
 ```powershell
-$angularTiers = @("primitive", "composition", "module", "experience")
+$fuentes = @(Get-ChildItem $uiPlatforms -Recurse -Filter "main.ts" -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Directory.Name -eq "src" -and $_.FullName -notmatch "[\\/]node_modules[\\/]" } |
+    ForEach-Object {
+        $carpeta = $_.Directory.Parent
+        [PSCustomObject]@{
+            Nombre     = $carpeta.Name
+            Tier       = $carpeta.Parent.Name
+            Plataforma = ($carpeta.FullName.Substring($uiPlatforms.Length).TrimStart("\", "/") -split "[\\/]")[0]
+        }
+    })
+$porNombre = @{}
+foreach ($f in $fuentes) { if (-not $porNombre.ContainsKey($f.Nombre)) { $porNombre[$f.Nombre] = $f } }
+
+# Red de seguridad: cero fuentes es un descubrimiento roto, no una UI vacía
+if ($fuentes.Count -eq 0) { throw "No encontré ningún src/main.ts bajo $uiPlatforms — el descubrimiento está roto; no reportar." }
 
 foreach ($el in $elements) {
-    $found = $false
-    foreach ($tier in $angularTiers) {
-        # Buscar por kebab exacto o variantes
-        $candidates = @(
-            "$angularRoot\$tier\$($el.Kebab)",
-            "$angularRoot\$tier\$($el.Kebab -replace '-','')",
-            "$angularRoot\$tier\$($el.Pascal.ToLower())"
-        )
-        $match = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-        if ($match) {
-            $el.HasAngular   = $true
-            $el.AngularTier  = $tier
-            $found = $true
-            break
-        }
-    }
-    if (-not $found) {
-        # Búsqueda más amplia en todos los tiers
-        $allProjects = Get-ChildItem $angularRoot -Recurse -Filter "project.json" |
-            Where-Object { $_.DirectoryName -match $el.Kebab -or $_.DirectoryName -match $el.Pascal }
-        if ($allProjects) {
-            $el.HasAngular = $true
-            # Inferir el tier de la ruta
-            $tierMatch = $allProjects[0].DirectoryName | Select-String -Pattern "($($angularTiers -join '|'))"
-            $el.AngularTier = if ($tierMatch) { $tierMatch.Matches[0].Value } else { "?" }
-        }
-    }
+    $f = $porNombre[$el.Kebab]
+    if ($f) { $el.HasAngular = $true; $el.AngularTier = "$($f.Plataforma)/$($f.Tier)" }
 }
 ```
 
 ---
 
-## 5. Paso 5 — Verificar bundles en registry.json y LOCAL_CDN
+## 5. Paso 5 — Verificar bundles en registry.json y en el CDN
 
 ```powershell
 $reg = $null
@@ -156,10 +155,18 @@ if ($reg) {
 
         if ($entry) {
             $ver    = $entry.implementations.angular.latest
-            $mainJs = "C:\LOCAL_CDN\synergos\$($el.Kebab)\angular\$ver\main.js"
+            $mainJs = Join-Path $cdnRoot "$($el.Kebab)\angular\$ver\main.js"
             $el.HasBundle  = Test-Path $mainJs
             $el.BundleVer  = $ver
         }
+    }
+
+    # Segunda red de seguridad, cruzada: si la mayoría de lo PUBLICADO no aparece como fuente, lo
+    # roto es el descubrimiento del paso 4, no la UI. Se falla en vez de reportar «sin Angular».
+    $publicados = @($reg.elements | ForEach-Object { $_.name })
+    $sinFuente  = @($publicados | Where-Object { -not $porNombre.ContainsKey($_) })
+    if ($publicados.Count -gt 0 -and $sinFuente.Count -gt ($publicados.Count / 2)) {
+        throw "$($sinFuente.Count) de $($publicados.Count) elementos publicados no tienen fuente: el paso 4 está roto."
     }
 }
 ```
@@ -192,7 +199,7 @@ foreach ($el in $elements) {
 
 ---
 
-## 7. Agregar elementos en LOCAL_CDN que NO están en uSync
+## 7. Agregar elementos publicados en el CDN que NO están en uSync
 
 ```powershell
 # Bundles huérfanos — en registry pero sin ElementType en uSync
@@ -281,11 +288,11 @@ Write-Output ("  " + ("-" * 80))
 $elements | Sort-Object Alias | ForEach-Object {
     $row = "  {0,-35} {1,-5} {2,-5} {3,-6} {4,-7} {5,-6} {6}" -f `
         $_.Alias,
-        (if ($_.HasXml)     { "OK" } else { "NO" }),
-        (if ($_.HasBgrid)   { "OK" } else { "NO" }),
-        (if ($_.HasSynHost) { "OK" } else { "NO" }),
-        (if ($_.HasAngular) { "OK" } else { "NO" }),
-        (if ($_.HasBundle)  { "OK" } else { "NO" }),
+        $(if ($_.HasXml)     { "OK" } else { "NO" }),
+        $(if ($_.HasBgrid)   { "OK" } else { "NO" }),
+        $(if ($_.HasSynHost) { "OK" } else { "NO" }),
+        $(if ($_.HasAngular) { "OK" } else { "NO" }),
+        $(if ($_.HasBundle)  { "OK" } else { "NO" }),
         $_.AngularTier
     Write-Output $row
 }
@@ -305,10 +312,10 @@ $needsWork = @($elements | Where-Object { $_.Level -ne "COMPLETO" }) | Sort-Obje
 
 foreach ($el in $needsWork) {
     Write-Output ""
-    Write-Output "  $($el.Alias) [$($_.Level)]:"
+    Write-Output "  $($el.Alias) [$($el.Level)]:"
     if (-not $el.HasBgrid)   { Write-Output "    1. Crear Views/Partials/blockgrid/Components/$($el.Alias).cshtml" }
     if (-not $el.HasSynHost) { Write-Output "    2. Crear Views/Partials/SynHost/$($el.Pascal).cshtml" }
-    if (-not $el.HasAngular) { Write-Output "    3. Crear Angular project en platforms/angular/apps/elements/{tier}/$($el.Kebab)/" }
+    if (-not $el.HasAngular) { Write-Output "    3. Crear la fuente en platforms/angular/apps/elements/<tier>/$($el.Kebab)/ (copiando la forma de un elemento vivo)" }
     if (-not $el.HasBundle)  { Write-Output "    4. Ejecutar /synergos-cdn-build para $($el.Kebab)" }
 }
 ```

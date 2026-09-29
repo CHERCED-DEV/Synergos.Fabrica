@@ -42,16 +42,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Rama HOMÓNIMA: el trabajo que cruza los tres repos viaja en ramas con el MISMO nombre y se
+      # integra junto. Si un hermano tiene una rama con el nombre de ésta, se mide contra ella; si
+      # no, contra su rama por defecto. Sin esto, la rama de este repo que enseña lo que trae la
+      # rama homónima del CMS saldría roja por una ADR que todavía no está en master, y ese rojo
+      # diría «el arnés miente» cuando lo que pasa es «todavía no se integró» (#172). `main` no
+      # tiene homónima en los hermanos (usan `master`), así que sigue midiéndose contra lo publicado.
+      - name: ¿Los hermanos tienen una rama con este nombre?
+        id: ramas
+        shell: bash
+        run: |
+          rama="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          for r in CMS UI; do
+            if git ls-remote --exit-code --heads "https://github.com/CHERCED-DEV/Synergos.$r.git" "$rama" >/dev/null 2>&1; then
+              echo "$r=$rama" >> "$GITHUB_OUTPUT"
+              echo "Synergos.$r → rama homónima «$rama»"
+            else
+              echo "$r=" >> "$GITHUB_OUTPUT"
+              echo "Synergos.$r → rama por defecto"
+            fi
+          done
+
       - name: Clonar Synergos.CMS (el disco contra el que se miden las herramientas)
         uses: actions/checkout@v4
         with:
           repository: CHERCED-DEV/Synergos.CMS
+          ref: ${{ steps.ramas.outputs.CMS }}
           path: _hermanos/Synergos.CMS
 
       - name: Clonar Synergos.UI
         uses: actions/checkout@v4
         with:
           repository: CHERCED-DEV/Synergos.UI
+          ref: ${{ steps.ramas.outputs.UI }}
           path: _hermanos/Synergos.UI
 
       - uses: actions/setup-node@v4
@@ -74,8 +97,9 @@ jobs:
           SYNERGOS_UI_PATH: ${{ github.workspace }}/_hermanos/Synergos.UI
 
       # Las ADR que citan las skills existen en el CMS clonado y su estado es el del fichero (#172).
-      # Rojo si el CMS publicado todavía no tiene una ADR que una skill enseña: es el orden de merge
-      # dicho como gate — el CMS que trae la ADR entra antes que el arnés que la enseña.
+      # Rojo si el CMS contra el que se mide —el homónimo o, si no hay, master— todavía no tiene una
+      # ADR que una skill enseña: es el orden de merge dicho como gate. En `main` exige que el CMS
+      # publicado ya la traiga; en una rama de trabajo, que la traiga su rama homónima.
       - name: ADRs citadas por las skills
         run: node --test tests/adrs-citadas.test.mjs
         env:

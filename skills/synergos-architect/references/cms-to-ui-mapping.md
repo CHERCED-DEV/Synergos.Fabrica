@@ -7,6 +7,17 @@
 > `element-inputs.json` y el `registry.json` publicado), y lo publicado, en `$CDN_ROOT/registry.json`.
 > Una cifra de esta foto no se cita: se cuenta en esas fuentes.
 >
+> **Lo que esta foto NO dice: qué dato conserva cada elemento.** Sus «shapes» salen del ElementType
+> de uSync (`Syn{Pascal}Schema`, que además mete las pestañas como propiedades) y de
+> `element-inputs.json`, que declara atributos y no la forma de `config`. Lo que el elemento lee de
+> verdad lo decide su sanitizador, y lo que la vista SynHost emite puede no coincidir: entonces el SSR
+> se ve bien y la hidratación lo borra (D1, `CLAUDE.md` §5 del CMS,
+> `feedback_hydration_can_erase_what_ssr_painted`). Para «¿qué dato pide?»: la vista
+> `Views/Partials/SynHost/<Pascal>.cshtml` y el sanitizador del `.ts`, leídos juntos
+> (`synergos-contract-drift` §7).
+>
+> Y lo que aparece acá sin uso no se propone retirar: el catálogo es vocabulario (ADR 0134 §3).
+>
 > Esta tabla cierra el loop entre el schema CMS uSync (lo que el editor llena
 > en backoffice) y el bundle UI que efectivamente hidrata en el browser.
 >
@@ -140,7 +151,7 @@ Para cada `elementSyn{Name}`, siempre cita:
 1. **Alias CMS**: `elementSyn{Name}` (lo que va en `<Composition>` references o como tipo del Block Grid)
 2. **Tag DOM**: `<synergos-{kebab}>` (lo que el browser va a hidratar)
 3. **Bundle URL**: `/cdn-bundles/{name}/{framework}/{slot}/main.js` (lo que el Razor emite)
-4. **Shape esperado**: si tiene rich config, usar `{Pascal}ElementConfig`; si no, `Syn{Pascal}Schema`.
+4. **Shape esperado**: si tiene rich config, `{Pascal}ElementConfig`; si no, `Syn{Pascal}Schema` — y en los dos casos, confirmado contra el sanitizador del elemento antes de prometerle un campo al editor (D1, aviso de arriba).
 5. **Razor partial** (si el arquitecto va a customizar SSR): `Views/Partials/SynHost/{Pascal}.cshtml`.
 
 ### Cuando vea un schema con compIntegration
@@ -155,8 +166,10 @@ fallback (`data-synergos-cdn-offline="true"`).
 
 Cita el `{Pascal}ElementConfig` (rich, si existe — más completo) o
 `Syn{Pascal}Schema` (auto, refleja el schema CMS literal). El detalle por
-cada elemento está en `ui-elements-catalog.md`.
+cada elemento está en `ui-elements-catalog.md`. Ninguno de los dos es lo que el
+elemento **conserva**: eso es su sanitizador (aviso de arriba).
 
 ## Edit policy
 
-NO editar este archivo a mano — auto-regenerado.
+Es una FOTO con fecha: no se edita para «ponerla al día» ni se regenera (su generador se borró en
+el #141). Lo vivo es `npm run catalog` en la UI y `$CDN_ROOT/registry.json`.

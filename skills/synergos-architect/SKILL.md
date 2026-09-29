@@ -1,6 +1,6 @@
 ---
 name: synergos-architect
-description: Arquitecto SYNERGOS — bootstrap completo + autoría editorial + empalme UI. Activar cuando el arquitecto (a) está creando o editando contenido (páginas, secciones, cards, CTAs, alertas globales, navegación), (b) está draftando copy (títulos, descripciones, CTA labels), (c) está decidiendo qué composition/block/element usar y qué DataType aplica por campo, (d) está armando un aplicativo desde 0 (vertical profesional / e-commerce / marca / membership / healthcare / multi-dominio), o (e) preguntando qué bundle UI consume cierto schema CMS. Sugiere piezas concretas del schema vivo, las mappea a bundles UI publicados, justifica con principios y ADRs del proyecto, y entrega backoffice steps + drafts de copy listos para pegar. Lee `Synergos.CMS/Synergos.CMS.Web/uSync/v9/` (schema CMS, la fuente de verdad) + `references/ui-elements-catalog.md` y `references/cms-to-ui-mapping.md` (fotos del catálogo de bundles UI y del mapeo schema↔bundle; la lista viva la da npm run catalog en la UI) + `references/app-bootstrap-recipes.md` (recetas por vertical).
+description: Arquitecto SYNERGOS — bootstrap completo + autoría editorial + empalme UI. Activar cuando el arquitecto (a) está creando o editando contenido (páginas, secciones, cards, CTAs, alertas globales, navegación), (b) está draftando copy (títulos, descripciones, CTA labels), (c) está decidiendo qué composition/block/element usar y qué DataType aplica por campo, (d) está armando un aplicativo desde 0 (vertical profesional / e-commerce / marca / membership / healthcare / multi-dominio), o (e) preguntando qué bundle UI consume cierto schema CMS. Sugiere piezas concretas del schema vivo clasificando cada colocable como funcionalidad o pieza (ADR 0134), contesta el reuso por el DATO que el elemento pide y no por su nombre, las mappea a bundles UI publicados, justifica con principios y ADRs del proyecto, y entrega backoffice steps + drafts de copy listos para pegar. Lee `Synergos.CMS/Synergos.CMS.Web/uSync/v9/` (schema CMS, la fuente de verdad) + `references/ui-elements-catalog.md` y `references/cms-to-ui-mapping.md` (fotos del catálogo de bundles UI y del mapeo schema↔bundle; la lista viva la da npm run catalog en la UI) + `references/app-bootstrap-recipes.md` (recetas por vertical).
 ---
 
 # SYNERGOS Architect — bootstrap + content authoring + UI bridge
@@ -25,6 +25,9 @@ Eres el copiloto del arquitecto cuando autora contenido editorial en el backoffi
 - **Iconos Umbraco**: nunca inventar. Verificar contra `tools/umbraco13-icons-stock.txt` del CMS (el stock de Umbraco 13, que `node tools/usync-audit.mjs` cruza con cada `<Icon>`) antes de sugerir un icono.
 - **Compositions reservadas**: si una composition tiene `<Description>` que arranca con `[Bloqueado externamente - ...]` o `[Disponible — sin consumers actuales]`, es scaffolding tracked. No es orphan ni se debe proponer borrar; tampoco usar como "general purpose" sin entender por qué está reservada.
 - **Backoffice instructions neutrales**: describe intención + metadatos ("crear nodo de tipo X bajo el padre Y, con propiedad Z = ..."), no path UI exacto. El UI cambia entre minor versions de Umbraco.
+- **Todo lo colocable es FUNCIONALIDAD o PIEZA** (ADR 0134, Aceptada; `CLAUDE.md` §0.C del CMS). Una funcionalidad se nombra por lo que hace y recibe **cableado**, no su configuración por el editor: nunca recomiendes un `configOverride` ni un campo de texto libre para configurarla. Una pieza recibe contenido y decisiones —**como selector**— y monta su gemela del design system. → `synergos-funcionalidad`
+- **No se propone retirar una pieza por no tener consumidor**, ni del catálogo Angular ni del Razor: es vocabulario de la fábrica. Un duplicado se fusiona; salir del CMS es decisión de producto (ADR 0134 §3).
+- **Las ADR 0135-0139 son propuestas**: si una recomendación depende de una, se dice, y se da lo que se hace hoy.
 
 ## 1. Workflow al activarse
 
@@ -68,6 +71,9 @@ Dispara una recomendación con esta estructura:
 - Pieza principal: `<alias>` (`<archivo.config>`)
   - Por qué: <1 frase justificando con la intención>
   - Capa: <Settings | Compositions | Blocks | Pages | Wiring>
+  - Tipo de colocable: <funcionalidad | pieza> — <qué necesita recibir para funcionar>
+  - Si es funcionalidad, su cableado: <secciones de diccionario · configuración de negocio (hoy sin canal: ADR 0137, propuesta) · decisiones del editor como selector · identidad por runtime>
+  - Si es pieza: <su gemela del design system, y si el elemento la monta>
 - Composiciones que aplica/hereda: <lista>
 - Pickers/DataTypes por campo:
   - <campo1>: <DataType alias> — <draft de descripción ≤120 chars>
@@ -91,7 +97,7 @@ Si la pieza es `elementSyn*`, deja explícito:
 - Tag custom element: `<synergos-{kebab}>`
 - Bundle path canonical: `/elements/{alias}/{version}/main.js`
 - Que el CMS resuelve via `IBundleRegistryClient` (NO cablear paths)
-- Que mientras `HttpBundleRegistryClient` siga bloqueado por el CDN team, el `StubBundleRegistryClient` retorna placeholder HTML — el bundle solo aparece en runtime cuando el CDN team publique el endpoint (ADR 0012, ver `Synergos.CMS.Web/docs/umbraco/cdn-contract.md`).
+- Que el registry lo lee `FileSystemBundleRegistryClient` (en Development, del `public/` que construye `npm run build:cdn`) o `HttpBundleRegistryClient`, según `Synergos:BundleRegistry:Mode`. **Ya no hay un equipo del CDN al que esperar** (ADR 0132 lo desbloqueó). Con `Mode=Stub`, o si el bundle no está publicado, el SSR emite el placeholder y no hidrata: `node tools/humo-conectado.mjs` en el CMS nombra la causa.
 
 Si la pieza es SSR pura (no `elementSyn*`), confirma que el partial vive en `Views/Partials/blockgrid/Components/` o `Views/Shared/SynHost/` y no requiere bundle CDN.
 
@@ -125,7 +131,11 @@ Antes de entregar la sugerencia, verifica:
 - [ ] ¿Si la pieza tiene Variations, defecto Culture salvo razón explícita?
 - [ ] ¿Si toca página, page type correcto según intent (`references/page-types.md`)?
 - [ ] ¿Backoffice steps neutrales (intención, no path UI exacto)?
-- [ ] ¿Si es `elementSyn*`, advertí del bloqueo CDN?
+- [ ] ¿Si es `elementSyn*`, confirmé que está publicado en `$CDN_ROOT/registry.json`?
+- [ ] ¿Dije si cada colocable es funcionalidad o pieza, y qué le llega por qué canal?
+- [ ] ¿El reuso se contestó por el DATO (vista SynHost + sanitizador), no por el nombre?
+- [ ] ¿Ninguna recomendación le da al editor un JSON para configurar una funcionalidad?
+- [ ] ¿No propuse retirar nada por no tener consumidor?
 
 ## 5. Workflow App-from-scratch (vertical bootstrap)
 
@@ -183,11 +193,20 @@ Para cada página de la receta, citar:
 
 ### Paso 5.6 — Empalme UI: confirmar bundles publicados
 
-Para cada `elementSyn*` recomendado, verificar contra lo vivo, no contra la foto:
+Para cada `elementSyn*` recomendado, verificar contra lo vivo, no contra la foto. Y **reusar se
+contesta por el DATO, no por el nombre** (doc 13 §5.bis del CMS: `booking-wizard` tiene forma de
+hotel y un alquiler es otro dato):
 - ¿Existe el elemento? → una entrada en `vitals/contracts/src/element-registry.json` de la UI (o `npm run catalog`).
 - ¿El bundle está publicado al CDN? → una entrada en `$CDN_ROOT/registry.json` (`synergos-guardrails/references/entorno.md`).
 - Si NO: marcar como **gap** — requiere una fuente nueva con la forma de un elemento vivo (`synergos-cms-author` §6), publicación al CDN (`synergos-cdn-build`), y el SSR va a emitir offline fallback hasta que esté publicado.
-- Si SÍ: citar la shape de inputs (rich `{Pascal}ElementConfig` si existe, o schema mirror `Syn{Pascal}Schema`).
+- Si SÍ: **el dato que pide** se lee en dos sitios juntos: lo que emite su vista
+  `Views/Partials/SynHost/<Pascal>.cshtml` y lo que conserva el sanitizador de su `.ts` en la UI.
+  Lo que uno emite y el otro no lee **se tira al hidratar** (D1): reusar ese elemento hereda el
+  defecto aunque el dato sea el tuyo (`synergos-contract-drift` §7). `Syn{Pascal}Schema` y las
+  fotos de `references/` describen el **ElementType** —lo que edita el editor—, no lo que el
+  elemento conserva. Mañana, el `record` por elemento de la ADR 0135 (propuesta).
+- Si NO existe: antes de marcar el gap, buscar el **concepto** en el design system
+  (`synergos-funcionalidad` §4.1): puede existir con otro nombre, o sin consumidor.
 
 ### Paso 5.7 — Orden de bootstrap final
 
@@ -254,6 +273,9 @@ A:
 Inputs públicos (HTML attributes — kebab-case):
 - `heading-text` (string), `body` (string), `cta-url` (string), ... (ver `references/ui-elements-catalog.md` para detalle).
 
+La shape de arriba sale de la foto; **lo que el elemento conserva de verdad** se confirma en su
+sanitizador y contra lo que emite `SynHost/Hero.cshtml` (D1, `synergos-contract-drift` §7).
+
 El editor llena el ContentType `elementSynHero` con esos campos en backoffice.
 El Razor SSR resuelve el bundle vía `IBundleRegistryClient` y emite el `<script>` + `<synergos-hero config='...'>`.
 ```
@@ -304,6 +326,30 @@ A: aplicar Workflow App-from-scratch (sección 5):
 
 Ver receta detallada en `references/app-bootstrap-recipes.md` § Receta 1.
 
+### Q: "Esta pieza del design system no la usa nadie. ¿La borramos?"
+
+A: **No por defecto** (ADR 0134 §3; `CLAUDE.md` §0.C.21 del CMS). Una pieza sin consumidor es
+vocabulario del catálogo de la fábrica: la auditoría midió las que se proponía retirar y **ninguna
+tuvo nunca un consumidor**, mientras la necesidad estaba resuelta a mano en muchos sitios. Las
+salidas son usarla, mejorarla, **fusionarla** si duplica un concepto que ya existe, o declararla con
+su disparador. Retirar queda para un duplicado inferior, con la evidencia escrita y la decisión del
+arquitecto.
+
+### Q: "¿Le agrego a `eventos` un campo para que el editor ponga la comisión?"
+
+A: **No.** `eventos` es una **funcionalidad**: recibe cableado, no su configuración por el editor
+(`CLAUDE.md` §0.C.20). La comisión es configuración de negocio: hoy **no hay canal** para ella —es
+una constante del componente— y el camino propuesto es `Synergos:Features:<X>` fuera del editor
+(ADR 0137, **Propuesta**). Tampoco por `configOverride`: se descarta en silencio si el JSON no
+parsea y pisa todo lo demás. Lo que sí le toca al editor son pocas decisiones, **como selector**.
+Detalle: `synergos-funcionalidad` §2.
+
+### Q: "¿Cuántos elementos hay publicados?"
+
+A: No se contesta de memoria ni con las fotos de `references/`: `npm run catalog` en la UI imprime
+la cuenta del registry, y lo publicado para el CMS son las entradas `elements` de
+`$CDN_ROOT/registry.json` (`synergos-medir` §3).
+
 ## 7. Referencias auxiliares
 
 ### Schema CMS + content authoring (originales cap-220)
@@ -314,7 +360,7 @@ Ver receta detallada en `references/app-bootstrap-recipes.md` § Receta 1.
 - `references/naming-and-ui-bridge.md` — `elementSyn*` / `<synergos-*>` / bundle CDN
 
 ### Bootstrap + UI catalog (nuevos cap-310 architect)
-- `references/ui-elements-catalog.md` — **FOTO** (2026-09-05) de los bundles publicados al CDN con tier/tag/framework/shape rich + schema + inputs. **No se regenera**: su generador se borró en el #141. La lista viva: `npm run catalog` en la UI.
+- `references/ui-elements-catalog.md` — **FOTO** (2026-09-05) de los bundles publicados al CDN con tier/tag/framework/shape rich + schema + inputs. **No se regenera**: su generador se borró en el #141. La lista viva: `npm run catalog` en la UI. Su «shape» es la del ElementType, no la que conserva el elemento (D1).
 - `references/cms-to-ui-mapping.md` — **FOTO** (misma fecha) de la tabla alias CMS ↔ tag DOM ↔ bundle URL ↔ shape ↔ Razor partial.
 - `references/app-bootstrap-recipes.md` — recetas por vertical (profesional / e-commerce / corporate / membership / healthcare) con páginas + blocks + settings + multi-domain.
 
@@ -336,5 +382,6 @@ Esta skill **NO**:
 - Edita schema (DocType / DataType / Dictionary nuevos) — eso es trabajo de Ola schema, no autoría. Redirigir al flow `feedback_ola_execution_flow`.
 - Edita DB ni el content tree — recomienda steps que el arquitecto ejecuta en backoffice.
 - Toca código C# / Razor / Angular — solo el schema CMS y orientación de uso.
-- Crea bundles UI nuevos — los que existen (`npm run catalog` en la UI) son lo que hay; gaps se marcan explícitamente para cap futuro.
+- Crea bundles UI nuevos — los que existen (`npm run catalog` en la UI) son lo que hay; gaps se marcan explícitamente para cap futuro, **después** de buscar el concepto en el design system.
+- Propone retirar piezas o compositions sin consumidor — es vocabulario (ADR 0134 §3).
 - Genera ADRs — eso es arquitectura, no autoría. Ofrece fundamento citando ADRs existentes pero no los crea.

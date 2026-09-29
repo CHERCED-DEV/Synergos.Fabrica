@@ -7,6 +7,17 @@
 > `element-inputs.json` y el `registry.json` publicado), y lo publicado, en `$CDN_ROOT/registry.json`.
 > Una cifra de esta foto no se cita: se cuenta en esas fuentes.
 >
+> **Lo que esta foto NO dice: qué dato conserva cada elemento.** Sus «shapes» salen del ElementType
+> de uSync (`Syn{Pascal}Schema`, que además mete las pestañas como propiedades) y de
+> `element-inputs.json`, que declara atributos y no la forma de `config`. Lo que el elemento lee de
+> verdad lo decide su sanitizador, y lo que la vista SynHost emite puede no coincidir: entonces el SSR
+> se ve bien y la hidratación lo borra (D1, `CLAUDE.md` §5 del CMS,
+> `feedback_hydration_can_erase_what_ssr_painted`). Para «¿qué dato pide?»: la vista
+> `Views/Partials/SynHost/<Pascal>.cshtml` y el sanitizador del `.ts`, leídos juntos
+> (`synergos-contract-drift` §7).
+>
+> Y lo que aparece acá sin uso no se propone retirar: el catálogo es vocabulario (ADR 0134 §3).
+>
 > Foto del registry del CDN + los contratos de la UI
 > (`vitals/contracts/src/{element-config,elements-syn,element-inputs}`), tomada el
 > 2026-09-05T23:25:46.040Z. Ya entonces su título decía una cuenta y sus secciones sumaban otra.

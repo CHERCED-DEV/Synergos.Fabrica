@@ -18,7 +18,7 @@ El bloque se renderiza 100% server-side. No hay JS de cliente requerido para que
 
 ### 2. CDN-hosted bundle (`elementSyn*`)
 
-El bloque emite HTML mínimo en el server (un `<synergos-{kebab}>` con atributos data-*) y un bundle JS publicado por el CDN team hidrata el componente en el cliente.
+El bloque emite HTML mínimo en el server (un `<synergos-{kebab}>` con su atributo `config`, un JSON) y un bundle JS publicado al CDN hidrata el componente en el cliente. Lo que el elemento toma de ese `config` lo decide su sanitizador: las claves de la vista tienen que ser ésas (D1).
 
 - Schema alias del block: `elementSyn{PascalCase}` (ej. `elementSynAccordion`, `elementSynCarousel`, `elementSynFormBuilder`).
 - DOM tag emitido: `<synergos-{kebab-case}>` (ej. `<synergos-accordion>`, `<synergos-carousel>`, `<synergos-form-builder>`).
@@ -44,17 +44,18 @@ El bloque emite HTML mínimo en el server (un `<synergos-{kebab}>` con atributos
 
 **Naming legacy `cdn*`:** está deprecado. Reemplazado por `elementSyn*` + `<synergos-*>`. Si encuentras un alias `cdn*` en uSync, marca al arquitecto que es legacy y debe migrarse en una ola futura — no construyas contenido nuevo encima.
 
-## Estado actual del bridge CDN (importante)
+## Estado del registry del CDN
 
-**`HttpBundleRegistryClient` está bloqueado** esperando que el equipo CDN publique los 5 puntos del contrato `Synergos.CMS/Synergos.CMS.Web/docs/umbraco/cdn-contract.md`. Hasta entonces:
+Decía que `HttpBundleRegistryClient` estaba bloqueado esperando a «el equipo del CDN». **Ya no**: la
+ADR 0132 («el equipo del CDN éramos nosotros») lo desbloqueó. El modo lo elige
+`Synergos:BundleRegistry:Mode`:
 
-- `StubBundleRegistryClient` está activo en runtime.
-- Cada `<synergos-*>` emite HTML placeholder (comentario indicando que el bundle no está disponible).
-- Los blocks `elementSyn*` son schema-completos pero **no se hidratan visualmente** en producción/dev.
+- `FileSystem` — en Development: lee el `public/` que construye `npm run build:cdn` en la UI.
+- `Http` — el mismo mapeo contra un CDN por HTTP.
+- `Stub` — no resuelve nada: cada `<synergos-*>` sale con su placeholder y no hidrata.
 
-**Implicaciones para autoría:**
-- Si el arquitecto va a crear contenido con `elementSyn*` ahora, **adviértele** que el bloque va a aparecer como placeholder hasta que CDN team publique. El contenido editorial dentro del block (datos, copy) es válido y se preserva.
-- Si la pieza requiere render visible YA y no puede esperar, pregúntale si hay un equivalente SSR puro (`element*` no-Syn) que cubra el caso temporalmente.
+**Implicación para autoría:** si un bloque sale como placeholder, no es una espera: es el modo, o un
+bundle sin publicar. `node tools/humo-conectado.mjs` en el CMS nombra la causa.
 
 ## Los contratos CMS↔UI
 

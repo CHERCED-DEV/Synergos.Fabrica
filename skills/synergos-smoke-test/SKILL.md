@@ -301,6 +301,10 @@ Para la verificación **a nivel navegador / DOM** usar la skill **`synergos-app-
 
 - **Hidratación real** vía `customElements.get('<tag>')` + import forzado del bundle — confirma que el elemento definió su clase, no solo que el tag existe en el HTML.
 - **Leak-scan del DOM renderizado** — busca `undefined` / `NaN` / `[object Object]` / claves crudas filtradas en el texto ya hidratado (bugs de shape backend↔UI que el HTML de servidor no muestra).
+- **Que lo hidratado muestre lo que el editor escribió** — un elemento puede hidratar bien y pintarse
+  vacío encima del SSR porque la vista SynHost le manda claves que no lee (D1). El HTML crudo que
+  mira esta skill **se ve bien** en ese caso: es justo lo que no puede ver (`synergos-app-verify`
+  §4.bis).
 - **Responsive a 375px** — layout móvil real, no solo markup.
 - **Todos los temas por-siteRoot** — contraste y tokens de tema que solo se rompen en el navegador con el CSS aplicado (`node tools/audit-themes.mjs` en la UI los enumera y los mide).
 

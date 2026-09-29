@@ -1,6 +1,6 @@
 ---
 name: synergos-app-verify
-description: Verificación END-TO-END en NAVEGADOR de las apps/fichas Angular custom-element (synergos-*) de SynergosLabs — lo que un smoke HTTP no ve. Activar DESPUÉS de synergos-cdn-build / synergos-smoke-test, tras republicar bundles o tocar libs/shared, o cuando el arquitecto reporta "la app no aparece / se ve pobre / rota". Complementa (no duplica) synergos-smoke-test: aquí se fuerza la hidratación real de custom elements montados lazy, se verifica customElements.get, se hace leak-scan del DOM (undefined/NaN/[object), se mide overflow horizontal responsive a 375px, y se recorren todos los temas por-siteRoot (data-theme) para cazar roturas de contraste que solo aparecen en un tema. Incluye los gotchas reales de las dos herramientas de navegador (embebido vs Chrome-ext) y el recordatorio de rehacer el runtime compartido (npm run build:cdn) cuando un cambio de libs/shared no se ve.
+description: Verificación END-TO-END en NAVEGADOR de las apps/fichas Angular custom-element (synergos-*) de SynergosLabs — lo que un smoke HTTP no ve. Activar DESPUÉS de synergos-cdn-build / synergos-smoke-test, tras republicar bundles o tocar libs/shared, o cuando el arquitecto reporta "la app no aparece / se ve pobre / rota". Complementa (no duplica) synergos-smoke-test: aquí se fuerza la hidratación real de custom elements montados lazy, se verifica customElements.get, se hace leak-scan del DOM (undefined/NaN/[object), se comprueba que lo hidratado muestre lo que el editor escribió y el SSR pintó (el defecto D1: la vista SynHost manda claves que el elemento no lee), se observa si las regiones vivas nacen con su mensaje o hablan cada segundo, se mide overflow horizontal responsive a 375px, y se recorren todos los temas por-siteRoot (data-theme) para cazar roturas de contraste que solo aparecen en un tema. Incluye los gotchas reales de las dos herramientas de navegador (embebido vs Chrome-ext) y el recordatorio de rehacer el runtime compartido (npm run build:cdn) cuando un cambio de libs/shared no se ve.
 model: claude-opus-4-8
 ---
 
@@ -153,6 +153,104 @@ Si la app pega al endpoint (200) pero muestra mock, es **contrato JSON** o **inp
 
 ---
 
+## 4.bis ¿Lo hidratado muestra lo que el editor escribió? (D1)
+
+`defined:true`, cero leaks y aun así **vacío donde el SSR tenía el texto del editor**: es D1. La
+vista SynHost emite en `config` unas claves y el sanitizador del elemento lee otras; el respaldo
+SSR se ve bien, el bundle arranca y se pinta en su default encima (`CLAUDE.md` §5 del CMS,
+`feedback_hydration_can_erase_what_ssr_painted`; UI regla 43). Ningún test del SSR ni del elemento
+lo ve, y el leak-scan de §4 tampoco: no hay `undefined`, hay **nada**.
+
+Paso 1 — el `config` **servido** contra el DOM **vivo**, elemento por elemento:
+
+```js
+// Por cada <synergos-*> de la página: qué textos del config que mandó el CMS NO aparecen al hidratar.
+const html = await fetch(location.href, { cache: 'reload' }).then(r => r.text());
+const servida = new DOMParser().parseFromString(html, 'text/html');
+const indice = {};
+const filas = [];
+for (const s of servida.querySelectorAll('[config]')) {
+  const tag = s.tagName.toLowerCase();
+  if (!tag.startsWith('synergos-')) continue;
+  const i = (indice[tag] = (indice[tag] ?? -1) + 1);
+  const vivo = document.querySelectorAll(tag)[i];
+  let cfg;
+  try { cfg = JSON.parse(s.getAttribute('config')); } catch { filas.push({ tag, i, error: 'config ilegible' }); continue; }
+  const texto = (vivo?.shadowRoot?.textContent ?? vivo?.textContent ?? '').replace(/\s+/g, ' ');
+  const noSeVen = Object.entries(cfg)
+    .filter(([k, v]) => k !== 'culture' && typeof v === 'string' && v.trim().length > 2 && !/^(https?:|\/)/.test(v))
+    .filter(([, v]) => !texto.includes(v.trim()))
+    .map(([k]) => k);
+  if (noSeVen.length) filas.push({ tag, i, definido: !!customElements.get(tag), noSeVen });
+}
+return filas;   // CANDIDATAS: una variante o un id no se ven y está bien; un título o un valor, no
+```
+
+Paso 2 — **el control**, que es lo que convierte la sospecha en diagnóstico: la misma instancia con
+las claves que el sanitizador SÍ lee (sacadas de su `.ts`, `synergos-contract-drift` §7.2):
+
+```js
+// Si con SUS claves pinta, el elemento está bien y el cable está mal: D1 confirmado.
+const el = document.querySelectorAll('synergos-kpi-card')[0];          // el tag y el índice del paso 1
+el.setAttribute('config', JSON.stringify({ label: 'CONTROL-D1', value: '1.234' }));
+await new Promise((ok) => setTimeout(ok, 300));
+return (el.shadowRoot?.textContent ?? el.textContent).includes('CONTROL-D1');
+```
+
+- Paso 1 con candidatas + control `true` → **D1**: se arregla la vista, no el elemento
+  (`synergos-contract-drift` §7.4).
+- Control `false` → el elemento no pinta ni con sus claves: es otro problema (§3, input-race).
+- Paso 1 sin candidatas → no hay D1 **en esta página, con este contenido**: un campo que el editor
+  dejó vacío no se puede ver perderse. Se dice en el reporte.
+
+---
+
+## 4.ter Regiones vivas: ¿existen antes del mensaje? ¿hablan cada segundo?
+
+Una región viva que **nace con su mensaje** —entra al DOM dentro de un `@if` ya con el texto— el
+lector de pantalla probablemente no la anuncia; y una que cambia **cada segundo** (un reloj) lo
+satura (UI regla 42). Se observa mientras se dispara la acción que debería anunciar algo:
+
+```js
+// Observa 5 s. DISPARADOR: el control que provoca el anuncio (agregar al carrito, paginar, copiar), o null.
+const VIVA = '[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"], [role="log"]';
+const DISPARADOR = null;
+const nacidas = [];
+const cambios = new Map();
+const mo = new MutationObserver((ms) => {
+  for (const m of ms) {
+    for (const n of m.addedNodes) {
+      if (n.nodeType !== 1) continue;
+      for (const r of [n, ...n.querySelectorAll(VIVA)]) {
+        if (r.matches(VIVA) && r.textContent.trim()) nacidas.push({ tag: r.tagName.toLowerCase(), texto: r.textContent.trim().slice(0, 60) });
+      }
+    }
+    const nodo = m.target.nodeType === 1 ? m.target : m.target.parentElement;
+    const region = nodo?.closest?.(VIVA);
+    if (region) cambios.set(region, (cambios.get(region) ?? 0) + 1);
+  }
+});
+mo.observe(document.body, { subtree: true, childList: true, characterData: true });
+if (DISPARADOR) document.querySelector(DISPARADOR)?.click();
+await new Promise((ok) => setTimeout(ok, 5000));
+mo.disconnect();
+return {
+  nacenConSuMensaje: nacidas,
+  hablanSeguido: [...cambios].filter(([, c]) => c >= 4)
+    .map(([r, c]) => ({ tag: r.tagName.toLowerCase(), clase: String(r.className).slice(0, 40), cambiosEn5s: c })),
+  anunciadorDelDocumento: !!document.querySelector('[data-syn-live-announcer]'),
+};
+```
+
+- `nacenConSuMensaje` no vacío → el mensaje de ese **evento** se le pide a `LiveAnnouncerService`
+  (`libs/shared/src/services/live-announcer.service.ts`, la región de documento que vacía, espera y
+  pone), o la región tiene que existir desde el primer render y cambiar su texto después.
+- `hablanSeguido` → un reloj se **describe** en su `aria-label`; no se anuncia cada tic.
+- Lo que este paso **no** dice: si un lector de pantalla real lo anunció. Eso se prueba con uno, y
+  se dice en el reporte si no se hizo. El observador tampoco entra en shadow roots.
+
+---
+
 ## 5. Responsive: overflow horizontal a 375px
 
 Un desborde horizontal en móvil es el defecto de acabado más común. Redimensiona a 375px y mide:
@@ -239,7 +337,7 @@ return { theme, lowContrast };
 
 - `ratio < 3` en texto sobre color saturado (brand/accent) = probable ilegibilidad. El texto SOBRE brand/accent debe ser CLARO en TODOS los temas.
 - `backgroundColor` transparente (`rgba(0,0,0,0)`) da falsos positivos — para esos casos confirma con la Chrome-ext (screenshot) sobre ese tema.
-- No basta con verificar `light`. Recorre los 7. Usa `resize_window colorScheme:"dark"` solo para el toggle de OS; el `data-theme` de SynergosLabs manda sobre el look, y viene por siteRoot.
+- No basta con verificar `light`. Recorrelos todos (la lista, `audit-themes`). Usa `resize_window colorScheme:"dark"` solo para el toggle de OS; el `data-theme` de SynergosLabs manda sobre el look, y viene por siteRoot.
 
 ---
 
@@ -257,6 +355,8 @@ return { theme, lowContrast };
 | Verificar el look solo en `light` | Recorrer todos los temas por-siteRoot (§7) |
 | Parchear un overflow con CSS ad-hoc | Componer/tokenizar el fix (Layout Composer + tokens `--syn-*`) |
 | Tratar `mockBanner` como cosmético | Es contrato JSON o input-race: la app degradó a mock pese a 200 (§4) |
+| Dar por bueno un elemento porque el SSR se veía bien antes de hidratar | Comparar el `config` servido con el DOM vivo, y el control con sus claves (§4.bis) |
+| «Tiene `aria-live`, así que anuncia» | Observar si la región existía antes del mensaje y si habla cada segundo (§4.ter) |
 
 ---
 
@@ -265,12 +365,14 @@ return { theme, lowContrast };
 Por cada app/vertical verificada, reportar:
 - `tag` + `defined` (hidratación) + `count`.
 - Leaks encontrados (`undefined`/`NaN`/`[object`) y si hubo `mockBanner`.
+- D1: las claves del `config` servido que no se ven al hidratar, y el resultado del control (§4.bis).
+- Regiones vivas que nacen con su mensaje o hablan cada segundo (§4.ter), y si se probó con lector.
 - Endpoint real al que pegó (confirma data viva, no mock).
 - Overflow a 375px (px + culprits si >2).
 - Temas recorridos y hallazgos de contraste (`ratio<3`).
 - Si aplicó el ciclo runtime: confirmación `stale:false`.
 
-Veredicto PASS solo si: todos los tags `defined:true`, cero leaks, sin `mockBanner`, `overflow<=2` en móvil, y sin baja de contraste en ninguno de los temas.
+Veredicto PASS solo si: todos los tags `defined:true`, cero leaks, sin `mockBanner`, sin D1 confirmado, `overflow<=2` en móvil, y sin baja de contraste en ninguno de los temas.
 
 ---
 

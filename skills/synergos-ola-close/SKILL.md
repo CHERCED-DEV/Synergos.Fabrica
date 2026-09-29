@@ -1,6 +1,6 @@
 ---
 name: synergos-ola-close
-description: Cierra una Ola de desarrollo de Synergos siguiendo el flujo estándar de 20 pasos — verifica entregables, corre las suites y los gates del schema (usync-audit, usync-rebuild-check), hace backup, commitea uSync XMLs + Razor + Angular con el mensaje canónico en cada repo, actualiza §11.x en los docs de arquitectura, y genera el resumen de cierre. Invocar al terminar todos los trabajos de una Ola antes de comenzar la siguiente.
+description: Cierra una Ola de desarrollo de Synergos siguiendo el flujo estándar de 20 pasos — verifica entregables, corre TODAS las suites y los tramos de la UI por separado aunque uno salga en rojo (una cadena && esconde lo de detrás), compara cada rojo por nombre con la línea base de la apertura (los de entorno de Windows, por ticket), corre los gates del schema (usync-audit, usync-rebuild-check), hace backup, commitea uSync XMLs + Razor + Angular con el mensaje canónico en cada repo, actualiza §11.x en los docs de arquitectura, y genera el resumen de cierre. Invocar al terminar todos los trabajos de una Ola antes de comenzar la siguiente.
 model: claude-opus-4-8
 ---
 
@@ -71,10 +71,13 @@ contra cada ensamblado): no se copia acá cuántas son ni cuántos tests tienen.
 ```bash
 cd "$cms"
 
-# 2A. Cada proyecto de tests del árbol — la lista sale del disco, no de esta skill
-find . -name '*Tests.csproj' -not -path '*/bin/*' -not -path '*/obj/*' | while read p; do
-  dotnet test "$p" --nologo || { echo "ROJO: $p — no cerrar la Ola"; exit 1; }
-done
+# 2A. TODOS los proyectos de tests del árbol, aunque uno salga en rojo — la lista sale del disco.
+#     Salir en el primero esconde los de detrás: es la cadena && con otra cara.
+rojos=()
+while read -r p; do
+  dotnet test "$p" --nologo || rojos+=("$p")
+done < <(find . -name '*Tests.csproj' -not -path '*/bin/*' -not -path '*/obj/*')
+printf 'ROJO: %s\n' "${rojos[@]}"   # cada uno, con el NOMBRE de sus tests en rojo, va al reporte
 
 # 2B. El schema del disco está sano
 node tools/usync-audit.mjs
@@ -83,8 +86,23 @@ node tools/usync-audit.mjs
 node tools/usync-rebuild-check.mjs
 ```
 
-Si la Ola tocó la UI: `npm test` en `$ui` (corre los gates de contrato y las suites de cada
-plataforma; ver `Synergos.UI/CLAUDE.md`).
+Si la Ola tocó la UI, en `$ui` y **por tramos**, no `npm test` entero: en Windows la cadena `&&`
+corta en el primer rojo de entorno y lo de detrás no corre.
+
+```bash
+cd "$ui"
+logs="$(mktemp -d)"   # ':' no vale en un nombre de fichero de Windows: test:tools → test-tools.log
+for tramo in test:contratos test:tools test:vitals test:angular test:preact; do
+  npm run "$tramo" > "$logs/${tramo//:/-}.log" 2>&1 && echo "OK    $tramo" || echo "ROJO  $tramo  ($logs/${tramo//:/-}.log)"
+done
+```
+
+**Cómo se lee un rojo.** Se compara **por nombre de test** con la línea base de la apertura
+(`synergos-ola-open`, Fase 0). Los rojos de entorno de Windows están nombrados, con su causa, en el
+#170 y en UI#79 (`CLAUDE.md` §5 del CMS, `feedback_a_dev_machine_is_not_ci`): uno de ésos no
+bloquea el cierre, **y se nombra igual en el reporte**. Cualquier otro rojo es real hasta demostrar
+lo contrario —aunque esté «al lado» de uno de entorno— y la Ola no cierra. Y el verde también se
+mira: G-7 da verde con menos claves en un checkout CRLF (`synergos-medir` §5).
 
 ---
 
@@ -143,6 +161,13 @@ git -C $ui  commit -m "feat($olaTag): $olaTitle" -- "platforms/angular/apps"
 git -C $cms log --oneline -3
 ```
 
+**Cerrar la Ola no es publicarla.** Empujar y abrir el PR va por `synergos-ticket-first`: el remoto
+de los repos Synergos es el alias SSH `github-cherced` (cuenta CHERCED-DEV), no la entrada
+`github.com` de la máquina, que es la cuenta de trabajo (§6 de esa skill). Y si el PR de un repo
+depende de que otro esté publicado o mergeado primero, eso no se arregla escribiéndolo en el mensaje:
+*¿qué se pone ROJO si lo de fuera no está?* (`feedback_a_merge_order_warning_in_prose_is_not_a_gate`,
+`CLAUDE.md` §5 del CMS).
+
 ---
 
 ## 6. Actualizar documentación §11.x
@@ -195,7 +220,7 @@ antes de cerrar.
     Razor views         : $($razorNew.Count) cambios
     UI                  : $($uiNew.Count) cambios
     Bundles CDN         : $(@($reg.elements).Count) en registry.json
-    Suites + gates      : verdes (§2)
+    Suites + gates      : verdes, o sólo los rojos de entorno nombrados (#170, UI#79) (§2)
 
   ADRs de esta Ola:
     $adrsCreated
@@ -220,7 +245,8 @@ warn: uSync: Skipping [no changes detected] (para tipos que no cambiaron)
 ## 10. Señales que sí detienen el cierre
 
 ```
-error: una suite o un gate en rojo (§2)
+error: una suite o un gate en rojo que NO es uno de los de entorno nombrados (§2)
+error: un tramo o una suite que no corrió (la cadena && o un bucle cortado no es un verde)
 error: UNIQUE constraint failed — GUID collision en uSync
 error: DB integrity check failed
 error: git commit rechazado por pre-commit hook

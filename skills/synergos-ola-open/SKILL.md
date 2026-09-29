@@ -1,12 +1,43 @@
 ---
 name: synergos-ola-open
-description: Abre una nueva Ola de desarrollo de Synergos — determina el número siguiente, define el alcance y entregables, identifica los ADRs que se crearán, ejecuta un health check inicial, hace backup del DB, y prepara el contexto completo para que synergos-cms-author y synergos-usync-author trabajen con información completa. Invocar al inicio de cada ciclo de trabajo nuevo.
+description: Abre una nueva Ola de desarrollo de Synergos — empieza por la Fase 0 (medir el árbol heredado antes de tocarlo: worktree propio y trabajo ajeno sin tocar, escritura en GitHub, la línea base de suites con cada rojo por nombre y los de entorno de Windows por ticket, y la lista heredada medida en los dos sentidos), determina el número siguiente, define el alcance y entregables, identifica los ADRs que se crearán, ejecuta un health check inicial, hace backup del DB, y prepara el contexto completo para que synergos-cms-author y synergos-usync-author trabajen con información completa. Invocar al inicio de cada ciclo de trabajo nuevo.
 model: claude-opus-4-8
 ---
 
 # SYNERGOS Ola Open — abrir una nueva Ola de desarrollo
 
 Una Ola en Synergos es el ciclo de trabajo atómico: abre con un contexto definido, termina con todo committeado y documentado. Esta skill prepara ese contexto.
+
+---
+
+## 0. Fase 0 — medir el árbol heredado ANTES de tocarlo
+
+Una Ola casi nunca empieza de cero: hereda un ticket, un informe, una lista de otra sesión, un árbol
+con trabajo de alguien más. La auditoría de reutilización aprendió a la fuerza que **lo heredado se
+mide antes de ejecutarlo** (`synergos-medir`):
+
+1. **¿Dónde estoy parado, y es mío?** Dos sesiones en el mismo disco se pisan aunque cada una crea
+   tener su carpeta.
+   ```bash
+   git -C "$cms" worktree list; git -C "$cms" status --short; git -C "$cms" log --oneline -5 --date=iso --format='%h %ad %s'
+   git -C "$ui"  worktree list; git -C "$ui"  status --short; git -C "$ui"  log --oneline -5 --date=iso --format='%h %ad %s'
+   ```
+   Si hay cambios sin commitear que no son tuyos, **no se tocan ni se limpian**: se trabaja en un
+   worktree propio y se avisa. Una sesión, su worktree (`synergos-medir` §6).
+2. **¿Puedo escribir en GitHub?** Sin eso no hay ticket, y sin ticket no hay código
+   (`synergos-ticket-first` §6: el remoto es el alias `github-cherced`).
+3. **La línea base de las suites, con NOMBRE.** Correr las suites del CMS y los tramos de la UI
+   **antes** de tocar nada, y anotar cada rojo por su nombre de test. Los de entorno de Windows están
+   nombrados en el #170 y en UI#79 (`CLAUDE.md` §5 del CMS, `feedback_a_dev_machine_is_not_ci`); uno
+   que no esté ahí es real y es **anterior** a la Ola. Así, al cierre, un rojo se compara por nombre
+   y no se le echa la culpa —ni se le perdona— por vecindad.
+4. **La lista heredada se mide, en los dos sentidos.** Cada ítem de un ticket o un informe viejo se
+   cruza con el disco antes de ejecutarlo: lo que ya está hecho, lo que ya no aplica, **y lo que falta
+   y la lista no dice**. Lo que decide algo, con dos métodos. La auditoría recibió «retirar doce
+   piezas» y, medidas una por una, la respuesta fue retirar ninguna; y la regla que decía «9 de 12
+   patterns» era falsa (UI regla 39).
+5. **Las decisiones de producto que la lista trae tomadas, se devuelven como preguntas** (retirar,
+   sacar del CMS, fusionar): un agente no las cierra (`synergos-ticket-first` §8).
 
 ---
 
@@ -68,6 +99,12 @@ El alcance debe responder:
 
 ### Angular
 - [ ] {tier}/{name} — {descripción del componente}
+
+### Colocables (ADR 0134 — `synergos-funcionalidad`)
+- [ ] {name}: **funcionalidad | pieza** — {qué necesita recibir para funcionar}
+  - funcionalidad → cableado: secciones de diccionario · configuración de negocio (hoy sin canal, ADR 0137 propuesta) · decisiones como selector · identidad por runtime
+  - pieza → su gemela del design system (buscada por concepto) y que el elemento la monte
+- [ ] Reusos: el DATO que pide cada elemento reusado (vista SynHost + sanitizador), no su nombre
 
 ### Bundles CDN
 - [ ] registry.json actualizado
@@ -190,7 +227,8 @@ Write-Output "Estado del working tree:"
 git status --short
 ```
 
-Si hay archivos sin commitear del trabajo anterior: completar/commitear antes de abrir la nueva Ola.
+Si hay archivos sin commitear del trabajo anterior: completar/commitear antes de abrir la nueva Ola
+—si son **tuyos**—. Si son de otra sesión, no se tocan: Fase 0, punto 1.
 
 ---
 
@@ -230,6 +268,12 @@ Estado inicial:
     CMS     : {OK / NO CORRIENDO}
     Registry: {N} elementos
     DB      : {N} MB
+
+  Fase 0:
+    Worktree        : {ruta} — propio / con trabajo ajeno sin tocar
+    GitHub          : escritura {sí / no — ticket redactado para el arquitecto}
+    Rojos de partida: {nombre de cada test en rojo · de entorno (#170, UI#79) o real}
+    Lista heredada  : {ítems medidos: hechos / ya no aplican / faltaban y no estaban}
 
   Entregables planificados:
     Schema  : {N} tipos nuevos

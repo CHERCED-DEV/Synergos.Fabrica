@@ -27,7 +27,7 @@ Eres el copiloto del arquitecto cuando autora contenido editorial en el backoffi
 - **Backoffice instructions neutrales**: describe intención + metadatos ("crear nodo de tipo X bajo el padre Y, con propiedad Z = ..."), no path UI exacto. El UI cambia entre minor versions de Umbraco.
 - **Todo lo colocable es FUNCIONALIDAD o PIEZA** (ADR 0134, Aceptada; `CLAUDE.md` §0.C del CMS). Una funcionalidad se nombra por lo que hace y recibe **cableado**, no su configuración por el editor: nunca recomiendes un `configOverride` ni un campo de texto libre para configurarla. Una pieza recibe contenido y decisiones —**como selector**— y monta su gemela del design system. → `synergos-funcionalidad`
 - **No se propone retirar una pieza por no tener consumidor**, ni del catálogo Angular ni del Razor: es vocabulario de la fábrica. Un duplicado se fusiona; salir del CMS es decisión de producto (ADR 0134 §3).
-- **Las ADR 0135-0139 son propuestas**: si una recomendación depende de una, se dice, y se da lo que se hace hoy.
+- **La ADR 0135 está Aceptada (2026-09-30); la 0136 a la 0139 son propuestas**: si una recomendación depende de una propuesta, se dice, y se da lo que se hace hoy. Un elemento con resolver tipado (los que lista `docs/contracts/elementos-synhost.json` del CMS) se describe por su `record`.
 
 ## 1. Workflow al activarse
 
@@ -204,7 +204,9 @@ hotel y un alquiler es otro dato):
   Lo que uno emite y el otro no lee **se tira al hidratar** (D1): reusar ese elemento hereda el
   defecto aunque el dato sea el tuyo (`synergos-contract-drift` §7). `Syn{Pascal}Schema` y las
   fotos de `references/` describen el **ElementType** —lo que edita el editor—, no lo que el
-  elemento conserva. Mañana, el `record` por elemento de la ADR 0135 (propuesta).
+  elemento conserva. **Si el elemento ya tiene resolver tipado** (lo lista
+  `docs/contracts/elementos-synhost.json`), el contrato es su `record` en
+  `Synergos.CMS.Interfaces/SynHost/<X>Props.cs` (ADR 0135, Aceptada): lo que declara es lo que llega.
 - Si NO existe: antes de marcar el gap, buscar el **concepto** en el design system
   (`synergos-funcionalidad` §4.1): puede existir con otro nombre, o sin consumidor.
 

@@ -99,6 +99,14 @@ Una decisión que el arquitecto quiere registrar **antes** de construirla se esc
   hizo la 0126 con la 0127.
 - **Ninguna skill, guía ni ADR la enseña como hecha**: se cita como «Propuesta» y se dice qué se hace
   hoy (`synergos-funcionalidad` es el ejemplo).
+- **Al aceptarla** (la 0135 es el precedente, 2026-09-30): el Estado pasa a `Aceptado (fecha)` y dice
+  con qué cambios; los cambios que pidió el piloto se ratifican **dentro de la propia ADR**, y la
+  Decisión avisa de que mandan sobre el texto original donde discrepen; «Enmendaría» pasa a «Enmienda»
+  y la enmendada recibe la marca en su cabecera; el índice pasa a `Accepted`. Y **en el mismo
+  movimiento se actualiza cada sitio que la citaba como propuesta**: la 0135 tenía citas en el CMS, el
+  UI, `refactor-docs` y las skills, **una de ellas enseñando la forma vieja de la vista**
+  (`synergos-cms-author` §5B). Se buscan con `grep -rn` del número en el CMS, el UI, `refactor-docs` y
+  el arnés.
 
 ### 2.2 Las cifras en un ADR
 

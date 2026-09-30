@@ -57,9 +57,10 @@ Los del árbol de servicios (capacidades y orquestadores) son otros: `CLAUDE.md`
 | **Regla de los dos pisos** | un elemento publicado con gemela en el design system **la monta**, nunca la reimplementa. Y antes de crear una pieza se busca por **concepto**, no por nombre | ADR 0134 §4 · UI reglas 40-41 · `synergos-funcionalidad` §4 |
 | **Nada se retira por defecto** | una pieza sin consumidor es **vocabulario** de la fábrica: se usa, se mejora, se **fusiona** si duplica un concepto, o se declara con su disparador. Que un colocable salga del CMS no es retirar su pieza | §0.C.21 · ADR 0134 §3 · `feedback_the_catalog_is_vocabulary_not_debt` |
 
-**Las ADR 0135-0139 son PROPUESTAS** —resolver tipado por elemento, diccionario por secciones,
-configuración de negocio fuera del editor, coordinación de página por eventos DOM, bundles con
-varias entradas— y describen el rumbo, no lo que ya está. Una skill no las enseña como hechas: qué
+**La ADR 0135 está ACEPTADA** (2026-09-30): el resolver tipado por elemento es la forma de todo
+colocable nuevo o tocado (`synergos-cms-author` §5B). **Las 0136-0139 son PROPUESTAS** —diccionario
+por secciones, configuración de negocio fuera del editor, coordinación de página por eventos DOM,
+bundles con varias entradas— y describen el rumbo, no lo que ya está. Una skill no las enseña como hechas: qué
 se hace HOY con cada una está en `synergos-funcionalidad` §2-§3. Su estado se lee del disco
 (`Estado` en cada fichero de `docs/adr/`), no de acá.
 
@@ -297,7 +298,7 @@ Mientras desarrollás, `npm run dev:cdn` rehace el runtime solo cuando tocás `l
 | "¿Por qué esta decisión?" | `Synergos.CMS.Web/docs/adr/NNNN-*.md` — índice en `docs/adr/README.md` |
 | "¿Esta ADR está aceptada o es propuesta?" | la línea `Estado`/`Status` de su fichero — nunca lo que diga una skill |
 | "¿Esto que voy a colocar es funcionalidad o pieza?" | `Synergos.CMS/CLAUDE.md` §0.C · ADR 0134 · doc 12 §5.11 · `synergos-funcionalidad` |
-| "¿Qué DATO pide un elemento? ¿Lo puedo reusar?" | **Hoy**: su vista `Views/Partials/SynHost/<X>.cshtml` y el sanitizador de su `.ts`, leídos juntos. **Mañana**: el `record` de ADR 0135 (Propuesta). Nunca por el nombre |
+| "¿Qué DATO pide un elemento? ¿Lo puedo reusar?" | **Si tiene resolver tipado** (lo lista `docs/contracts/elementos-synhost.json` del CMS): su `record`, ADR 0135 (Aceptada). **Si no**: su vista `Views/Partials/SynHost/<X>.cshtml` y el sanitizador de su `.ts`, leídos juntos. Nunca por el nombre |
 | "¿Cuántos elementos hay? ¿Cuántos publica el CDN?" | No se recuerda: `npm run catalog` en la UI (el registry) y `$CDN_ROOT/registry.json` (lo publicado) |
 | "¿Qué piezas del design system no alcanza nadie?" | `npm run gate:design-system` en la UI — y ninguna se retira por eso (§1.bis) |
 | "¿Qué DocTypes/DataTypes/Dictionary hay?" | `Synergos.CMS.Web/uSync/v9/` |

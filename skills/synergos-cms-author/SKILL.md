@@ -160,7 +160,8 @@ Para DTSelect*, leer el DataType desde `uSync/v9/DataTypes/DTSelect{Name}.config
    escribe en el ticket con su razón (`synergos-funcionalidad` §1).
 2. **¿Un elemento publicado ya lo hace?** Se contesta por el **DATO**, nunca por el nombre (doc 13
    §5.bis): hoy, la vista `Views/Partials/SynHost/<X>.cshtml` y el sanitizador de su `.ts` leídos
-   juntos; mañana, el `record` de ADR 0135 (Propuesta). Reusar un elemento con D1 hereda el defecto.
+   juntos, o su `record` si ya tiene resolver tipado (ADR 0135, Aceptada: los que lista
+   `docs/contracts/elementos-synhost.json`). Reusar un elemento con D1 hereda el defecto.
 3. **Si es una pieza: ¿el design system ya tiene el concepto?** Se busca por **lo que hace** entre
    `platforms/angular/libs/shared/src/components/` de la UI, **incluidas las piezas que no usa
    nadie** (vocabulario, no restos: `synergos-funcionalidad` §4.1). Si existe, el elemento nuevo la
@@ -306,8 +307,8 @@ Write-Output "GUID verificado: $g — 0 colisiones"
       <Variations>Culture</Variations>
     </GenericProperty>
     <!-- Override de config CDN: hoy todo elementSyn* lo lleva (ADR 0015 §1). NO es el canal de la
-         configuración de una funcionalidad (CLAUDE.md §0.C.20); la ADR 0135, propuesta, lo saca de
-         las funcionalidades. Si el elemento lo necesita para arrancar, lo que falta es cableado. -->
+         configuración de una funcionalidad (CLAUDE.md §0.C.20); la ADR 0135 (Aceptada) lo saca de
+         las funcionalidades y, en las piezas con resolver, sólo pisa lo que el record declara. Si el elemento lo necesita para arrancar, lo que falta es cableado. -->
     <GenericProperty>
       <Key>{KEY-PROP-3}</Key>
       <Name>Config Override (JSON)</Name>
@@ -453,59 +454,94 @@ Write-Output "GUID verificado: $g — 0 colisiones"
 @await Html.PartialAsync("SynHost/{Name}", Model.Content)
 ```
 
-### 5B. SynHost Renderer — Elemento CDN (con ISynHostEmitter)
+### 5B. SynHost Renderer — Elemento CDN: record + resolver + vista de dos líneas (ADR 0135)
 
-**Ruta:** `Synergos.CMS.Web/Views/Partials/SynHost/{Name}.cshtml`
+**La forma de un elemento colocable nuevo, o de uno que se toca, es la de la ADR 0135 (Aceptada
+2026-09-30).** Un `record` C# declara lo que viaja **con el nombre que lee el elemento**, un resolver
+lo llena desde el ElementType, y la vista sólo resuelve y emite. El diccionario libre de antes
+(`new Dictionary<string, object?> { ["clave"] = … }`) es la forma que produjo D1 en decenas de elementos
+—el editor escribía y el elemento lo tiraba al hidratar— y **no se escribe nueva**: sólo queda en los
+elementos que todavía no migraron (los que NO lista `docs/contracts/elementos-synhost.json`).
+
+Molde real, `tag` (el más chico del piloto #173):
+
+**1. El record** — `Synergos.CMS.Interfaces/SynHost/{Pascal}Props.cs`:
+
+```csharp
+[ElementoSynHost("tag", TipoDeColocable.Pieza)]
+public sealed record TagProps(
+    [property: CampoSynHost(OrigenDelCampo.Contenido)] string? Label,
+    [property: CampoSynHost(OrigenDelCampo.Decision)] string? Color);
+```
+
+- El primer argumento es el `name` del registry (kebab, sin `synergos-`); el segundo, **Pieza** o
+  **Funcionalidad** (ADR 0134).
+- Cada campo dice si es **Contenido** o **Decision** del editor. Los nombres serializados son los que
+  lee el sanitizador del elemento (ADR 0083), no los alias de uSync.
+- En el `<remarks>`: qué defecto cierra, qué convierte, y **qué promete el ElementType que no viaja**
+  (y por qué).
+
+**2. El resolver** — `Synergos.CMS.Web/Services/SynHost/{Pascal}Resolutor.cs`:
+
+```csharp
+public sealed class TagResolutor : IResolutorSynHost<TagProps>
+{
+    private readonly IPublishedValueFallback _fallback;
+
+    public TagResolutor(IPublishedValueFallback fallback) => _fallback = fallback;
+
+    public ElementoResuelto<TagProps> Resolver(IPublishedElement elemento)
+    {
+        var editor = new LectorDelEditor(elemento, _fallback);
+        return new ElementoResuelto<TagProps>(new TagProps(
+            Label: editor.Texto("tagLabel"),
+            Color: editor.Texto("tagColor")?.ToLowerInvariant()));
+    }
+}
+```
+
+- Se registra solo, por descubrimiento: un record sin su resolver pone rojo
+  `Cada_record_tiene_exactamente_un_resolver_registrado` (sin él sería un 500 que el build no ve).
+- `LectorDelEditor` convierte en el servidor: números como números, JSON de un TextArea como **lista
+  tipada**; lo que no se puede leer no viaja y se anota. Si falta una lectura (un DataType nuevo), se
+  amplía `LectorDelEditor` **una vez**, con su test; nunca se convierte a mano dentro de un resolver.
+
+**3. La vista** — `Synergos.CMS.Web/Views/Partials/SynHost/{Name}.cshtml`:
 
 ```razor
-@*
-    SynHost renderer — <synergos-{kebab}>. {Descripción del elemento}.
-    Ola {N}, ADR 0015.
-*@
-@using Umbraco.Cms.Core.Models
-@using Umbraco.Cms.Core.Models.PublishedContent
-@model IPublishedElement
+@using Synergos.CMS.Web.Services.SynHost
+@model Umbraco.Cms.Core.Models.PublishedContent.IPublishedElement
+@inject IResolutorSynHost<Synergos.CMS.Interfaces.SynHost.TagProps> Resolutor
 @inject Synergos.CMS.Interfaces.ISynHostEmitter Emitter
 @{
-    // — Extraer props del ElementType. Las CLAVES del diccionario de abajo son las que conserva
-    //   el sanitizador del elemento (§6C), no los alias de uSync: si difieren, D1 —
-    //   SynHost/KpiCard.cshtml mandaba kpiLabel y kpi-card lee label. —
-    var heading = Model.Value<string>("heading") ?? "";
-    var body    = Model.Value<string>("body") ?? "";
-    var media   = Model.Value<IPublishedContent>("media");
-    var ctaLink = Model.Value<Link>("ctaLink");
-
-    var props = new Dictionary<string, object?>(StringComparer.Ordinal)
-    {
-        ["heading"]  = heading,
-        ["body"]     = body,
-        ["imageSrc"] = media?.Url(mode: UrlMode.Absolute),
-        ["ctaLabel"] = Model.Value<string>("ctaLabel"),
-        ["ctaUrl"]   = ctaLink?.Url,
-    };
-
-    var request = new Synergos.CMS.Interfaces.SynHostEmitRequest(
-        BlockAlias: "{kebab-name}",    // alias kebab del custom element (sin prefijo synergos-)
-        Props: props,
-        ConfigOverrideJson: Model.Value<string>("configOverride"),
-        Culture: System.Globalization.CultureInfo.CurrentUICulture);
-
-    var result = await Emitter.EmitAsync(request);
+    var resuelto = Resolutor.Resolver(Model);
+    var result = await Emitter.EmitAsync(SolicitudSynHost.Para(resuelto, Model.Value<string>("configOverride"), System.Globalization.CultureInfo.CurrentUICulture));
 }
 @await Html.PartialAsync("SynHost/_Wrapper", (Model, result.ScriptHtml, result.ElementHtml))
 ```
 
+**4. Tests y contrato**:
+- `{Pascal}ResolutorTests.cs` con los cuatro casos por seam (vacío / feliz / filtro / idempotente,
+  ADR 0075; `synergos-test-author`).
+- Su muestra en `ContratoSynHostTests.Muestras`: el `ejemplo` del contrato **no se escribe, lo emite**
+  el resolver real.
+- `SYNERGOS_ACTUALIZAR_CONTRATOS=1 dotnet test Synergos.CMS.Tests --filter ContratoSynHost`
+  regenera `docs/contracts/elementos-synhost.json`. **Nunca se edita a mano.**
+- En el UI: `npm run contratos:synhost` regenera el tipo TS. El sanitizador del elemento se tipa con
+  `Partial<{Pascal}Props>` y entra en la tabla de `apps/elements/contrato-synhost.spec.ts`, que lo
+  **ejecuta** con el `ejemplo` y exige que cada clave mueva la salida. Una clave que se lee y no viaja
+  es `TS2339` al compilar; una que viaja y se tira, rojo en ese spec.
+
 **Notas de implementación:**
-- `BlockAlias` debe coincidir con el `name` registrado en `registry.json` (kebab, sin prefijo `synergos-`).
-- Si el CDN bundle no está publicado, `StubBundleRegistryClient` retorna null → `EmitAsync` emite un placeholder HTML comment. No hay error, solo silencio en UI.
-- `configOverride` permite al editor forzar props en JSON: se fusiona **encima** de las props y, si
-  no parsea, se descarta **en silencio** (`DefaultSynHostEmitter`). No se usa para configurar una
-  funcionalidad (`synergos-funcionalidad` §2).
-- El emitter agrega `culture` a todo `config`; hoy no la lee ningún elemento (el bridge ya la lleva).
-- **Las claves del diccionario `props` son un contrato con el sanitizador del elemento.** Se
-  comprueban **ejecutando**: un spec del elemento con el `config` exacto que emite esta vista
-  (`synergos-contract-drift` §7.3) y, en vivo, `synergos-app-verify` §4.bis. `dotnet build` no
-  compila las vistas: `node tools/compilan-las-vistas.mjs` en el CMS.
+- `BlockAlias` sale del atributo del record, y tiene que coincidir con el `name` del `registry.json`.
+- Si el CDN bundle no está publicado, `StubBundleRegistryClient` retorna null → `EmitAsync` emite un
+  placeholder HTML comment. No hay error, sólo silencio en UI.
+- `configOverride`, en una pieza con resolver, **sólo pisa campos que el record declara**
+  (`SolicitudSynHost.SoloLoDeclarado`). No es el canal de la configuración de una funcionalidad
+  (`synergos-funcionalidad` §2; ADR 0137, Propuesta).
+- El emitter agrega `culture` como envoltura; se decide aparte (cambio 6 de la ADR 0135).
+- `dotnet build` no compila las vistas: `node tools/compilan-las-vistas.mjs` en el CMS, con
+  `DOTNET_CLI_UI_LANGUAGE=en`.
 - Textos fijos del respaldo SSR (una etiqueta, un `aria-label`): `Umbraco.GetDictionaryValue` con
   una clave que **existe** en `uSync/v9/Dictionary/`. Ojo: `node tools/usync-audit.mjs` sólo
   avisa de las llamadas **sin** respaldo; con respaldo, una clave que falta no rompe nada y sale

@@ -284,7 +284,7 @@ confirma.
 
 Cruce, clave por clave: **LEÍDA Y EMITIDA** (bien) · **EMITIDA Y NO LEÍDA** (se tira al hidratar:
 D1) · **LEÍDA Y NO EMITIDA** (cae al default). Lo que viaja y no lee nadie (`culture`) no rompe,
-pero es ruido que la ADR 0135 propone dejar de mandar.
+pero es ruido (la ADR 0135 la deja como envoltura y la decide aparte).
 
 ### 7.3 Confirmarlo ejecutando — con el `config` exacto, y con control
 
@@ -317,8 +317,10 @@ el cable está mal. En vivo, el mismo par en el navegador: `synergos-app-verify`
   causa antes de creerle).
 - **El spec de §7.3 se queda** como regresión, con el payload de la vista.
 - **Lo que lo cierra**: el contrato tipado por elemento —un `record` C# del que se genera el tipo
-  TS— hace de `optionsJson` contra `options` un error de compilación. Es la **ADR 0135, Propuesta**:
-  hasta que se acepte, el cierre es el spec y la comprobación a mano.
+  TS— hace de `optionsJson` contra `options` un error de compilación. Es la **ADR 0135, Aceptada**
+  (2026-09-30): el elemento que ya tiene resolver tipado lo tiene cerrado por construcción; el que no,
+  se migra con la receta de `synergos-cms-author` §5B (piloto #173, escala #180), y mientras tanto el
+  cierre es el spec y la comprobación a mano.
 
 ## 8. Checklist de cierre
 

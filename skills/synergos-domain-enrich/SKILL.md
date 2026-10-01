@@ -31,7 +31,7 @@ campo nuevo — esta skill cubre sólo el primero:
 | lo que falta en la pantalla | canal | quién |
 |---|---|---|
 | **datos del dominio** (artista, agenda, destacados, precio) | la API del vertical, desde el dominio/stub | **esta skill** |
-| **textos propios de la UI** (títulos de sección, labels, errores, `aria-*`) | diccionario: la funcionalidad llama `t(clave, respaldo)` con la clave en un prefijo que el bridge publica; sus hojas reciben strings (UI regla 44; ADR 0136, Propuesta) | cambio UI + clave en uSync (`synergos-usync-author` §7) |
+| **textos propios de la UI** (títulos de sección, labels, errores, `aria-*`) | diccionario: el elemento llama `t(clave, respaldo)` con la clave en una sección que su record declara —el bridge publica la unión de las secciones de la página—; sus hojas reciben strings (UI regla 44; ADR 0136, Aceptada) | cambio UI + clave en uSync (`synergos-usync-author` §7) |
 | **una regla de negocio** (comisión, moneda, alcance, endpoint) | **no hay canal todavía**: se queda como constante del componente y la deuda se anota citando la ADR 0137 (Propuesta). **Nunca** por `configOverride` ni por un campo nuevo del editor | ticket |
 | **una decisión editorial** (qué variante, mostrar u ocultar) | un selector en el ElementType (ADR 0021), nunca texto libre | `synergos-cms-author` |
 | **quién es el usuario** | `window.synergos.member`, nunca un campo del editor con un valor por defecto | UI |

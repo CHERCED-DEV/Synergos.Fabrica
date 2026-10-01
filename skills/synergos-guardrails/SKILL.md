@@ -57,10 +57,11 @@ Los del árbol de servicios (capacidades y orquestadores) son otros: `CLAUDE.md`
 | **Regla de los dos pisos** | un elemento publicado con gemela en el design system **la monta**, nunca la reimplementa. Y antes de crear una pieza se busca por **concepto**, no por nombre | ADR 0134 §4 · UI reglas 40-41 · `synergos-funcionalidad` §4 |
 | **Nada se retira por defecto** | una pieza sin consumidor es **vocabulario** de la fábrica: se usa, se mejora, se **fusiona** si duplica un concepto, o se declara con su disparador. Que un colocable salga del CMS no es retirar su pieza | §0.C.21 · ADR 0134 §3 · `feedback_the_catalog_is_vocabulary_not_debt` |
 
-**La ADR 0135 está ACEPTADA** (2026-09-30): el resolver tipado por elemento es la forma de todo
-colocable nuevo o tocado (`synergos-cms-author` §5B). **Las 0136-0139 son PROPUESTAS** —diccionario
-por secciones, configuración de negocio fuera del editor, coordinación de página por eventos DOM,
-bundles con varias entradas— y describen el rumbo, no lo que ya está. Una skill no las enseña como hechas: qué
+**Las ADR 0135 y 0136 están ACEPTADAS** (2026-09-30 y 2026-10-01): el resolver tipado por elemento
+es la forma de todo colocable nuevo o tocado (`synergos-cms-author` §5B), y sus textos viajan por las
+secciones de diccionario que declara su record. **Las 0137-0139 son PROPUESTAS** —configuración de
+negocio fuera del editor, coordinación de página por eventos DOM, bundles con varias entradas— y
+describen el rumbo, no lo que ya está. Una skill no las enseña como hechas: qué
 se hace HOY con cada una está en `synergos-funcionalidad` §2-§3. Su estado se lee del disco
 (`Estado` en cada fichero de `docs/adr/`), no de acá.
 

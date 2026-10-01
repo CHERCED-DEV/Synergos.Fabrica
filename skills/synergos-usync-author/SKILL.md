@@ -441,20 +441,19 @@ para claves de tres segmentos como `Common.Actions.Close`:
 
 ### 7.1 La sección de una clave decide si llega a la UI
 
-El CMS publica el diccionario a las apps Angular en `window.synergos.i18n`, **filtrando por una
-lista fija de prefijos**: `I18nKeyPrefixes` de `HostBridgeSettings`
-(`Synergos.CMS.Application/Configuration/HostBridgeSettings.cs`). Una clave que una funcionalidad
-lee con `t()` y que **no** cae en uno de esos prefijos no llega nunca: sale siempre el respaldo
-escrito en el código y **parece traducida** (UI regla 44). Antes de crear una clave para la UI:
+El CMS publica el diccionario a las apps Angular en `window.synergos.i18n` con **las secciones que
+declaran los records de los elementos de la página** (ADR 0136, Aceptada 2026-10-01; contrato
+`docs/contracts/i18n-bridge.md` v1.1), una vez por página y con fallback por clave a la cultura por
+defecto. Una clave que un elemento lee con `t()` y cuya sección **no** declara su record no llega
+nunca: sale siempre el respaldo escrito en el código y **parece traducida** (UI regla 44). Antes de
+crear una clave para la UI:
 
-- que su sección esté en esa lista — o se pide en el ticket, porque cambiar la lista es cambiar lo
-  que viaja en cada página;
-- que no sea un prefijo que la lista publica y **no casa ninguna clave** (hay algunos): eso no la
-  arregla, sólo la confirma;
-- que la clave sirva a la **funcionalidad** que traduce; las hojas del design system reciben el
-  texto ya traducido.
-
-**Mañana** (ADR 0136, Propuesta): la lista fija desaparece y cada elemento declara sus secciones.
+- que su sección la declare el record del elemento que la usa (`[ElementoSynHost(..., Diccionario =
+  [...])]`): lo cruza `gate:diccionario` en el UI;
+- que la sección no quede vacía ni se declare sin usarse: los dos son gate (una sección vacía no
+  publica nada, una sin uso se publica para nadie);
+- que la clave sirva al **elemento** que traduce; las hojas del design system reciben el texto ya
+  traducido.
 
 ### 7.2 Lo que no es una clave de diccionario
 

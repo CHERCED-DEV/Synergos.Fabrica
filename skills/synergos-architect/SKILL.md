@@ -27,7 +27,7 @@ Eres el copiloto del arquitecto cuando autora contenido editorial en el backoffi
 - **Backoffice instructions neutrales**: describe intención + metadatos ("crear nodo de tipo X bajo el padre Y, con propiedad Z = ..."), no path UI exacto. El UI cambia entre minor versions de Umbraco.
 - **Todo lo colocable es FUNCIONALIDAD o PIEZA** (ADR 0134, Aceptada; `CLAUDE.md` §0.C del CMS). Una funcionalidad se nombra por lo que hace y recibe **cableado**, no su configuración por el editor: nunca recomiendes un `configOverride` ni un campo de texto libre para configurarla. Una pieza recibe contenido y decisiones —**como selector**— y monta su gemela del design system. → `synergos-funcionalidad`
 - **No se propone retirar una pieza por no tener consumidor**, ni del catálogo Angular ni del Razor: es vocabulario de la fábrica. Un duplicado se fusiona; salir del CMS es decisión de producto (ADR 0134 §3).
-- **La ADR 0135 está Aceptada (2026-09-30); la 0136 a la 0139 son propuestas**: si una recomendación depende de una propuesta, se dice, y se da lo que se hace hoy. Un elemento con resolver tipado (los que lista `docs/contracts/elementos-synhost.json` del CMS) se describe por su `record`.
+- **Las ADR 0135 y 0136 están Aceptadas (2026-09-30 y 2026-10-01); la 0137 a la 0139 son propuestas**: si una recomendación depende de una propuesta, se dice, y se da lo que se hace hoy. Un elemento con resolver tipado (los que lista `docs/contracts/elementos-synhost.json` del CMS) se describe por su `record`.
 
 ## 1. Workflow al activarse
 

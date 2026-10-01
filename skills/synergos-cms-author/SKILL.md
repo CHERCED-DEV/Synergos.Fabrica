@@ -546,7 +546,7 @@ public sealed class TagResolutor : IResolutorSynHost<TagProps>
   una clave que **existe** en `uSync/v9/Dictionary/`. Ojo: `node tools/usync-audit.mjs` sólo
   avisa de las llamadas **sin** respaldo; con respaldo, una clave que falta no rompe nada y sale
   siempre el texto de la vista — parece traducida y no lo está. Y el elemento, al hidratar, tiene
-  que decir lo mismo: si traduce con `t()`, la misma clave (ADR 0136, Propuesta; UI regla 44).
+  que decir lo mismo: si traduce con `t()`, la misma clave (ADR 0136, Aceptada; UI regla 44).
 
 ### 5C. Layout Renderer (Block Grid con Areas)
 
@@ -685,8 +685,8 @@ export class {Pascal}ElementComponent {
 - **Si es una pieza con gemela en el DS, la plantilla la MONTA** (`<syn-x>` + el import de su
   clase), no la reimplementa (§6D; ADR 0134 §4).
 - **Si es una funcionalidad, sus textos van por `t()`** (`import { t } from '@synergos/vitals-core'`,
-  `t('Seccion.Clave', 'respaldo es-CO')`) con la clave en un prefijo que el bridge publica, y a sus
-  hojas les pasa strings (UI regla 44). La identidad, de `getMember()` del mismo paquete, no de un
+  `t('Seccion.Clave', 'respaldo es-CO')`) con la clave en una sección que su record declara
+  (`[ElementoSynHost(..., Diccionario = [...])]`, ADR 0136), y a sus hojas les pasa strings (UI regla 44). La identidad, de `getMember()` del mismo paquete, no de un
   campo del editor.
 - Un mensaje de evento (agregado, copiado, cargado) va por `LiveAnnouncerService`, no por una
   región que nace dentro de un `@if` (UI regla 42).

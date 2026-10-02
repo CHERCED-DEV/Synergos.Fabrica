@@ -101,7 +101,7 @@ El alcance debe responder:
 
 ### Colocables (ADR 0134 — `synergos-funcionalidad`)
 - [ ] {name}: **funcionalidad | pieza** — {qué necesita recibir para funcionar}
-  - funcionalidad → cableado: secciones de diccionario · configuración de negocio (hoy sin canal, ADR 0137 propuesta) · decisiones como selector · identidad por runtime
+  - funcionalidad → cableado: secciones de diccionario · configuración de negocio (`Synergos:Features:<X>`, ADR 0137 aceptada) · decisiones como selector · identidad por runtime
   - pieza → su gemela del design system (buscada por concepto) y que el elemento la monte
 - [ ] Reusos: el DATO que pide cada elemento reusado (vista SynHost + sanitizador), no su nombre
 

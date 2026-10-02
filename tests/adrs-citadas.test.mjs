@@ -15,7 +15,7 @@
  *
  * Qué NO mira: números sin la palabra «ADR» delante (una tabla, un «(0136)» suelto), ni estados
  * dichos lejos del número. Por eso las skills que atribuyen un estado lo escriben pegado:
- * «ADR 0137 (Propuesta)».
+ * «ADR 0138 (Propuesta)».
  *
  * Necesita el árbol del CMS —`SYNERGOS_CMS_PATH` o el clon hermano, como el medidor— y **falla**
  * si no lo encuentra: un «no pude comprobar» no es un verde. Y falla también si el CMS no tiene las

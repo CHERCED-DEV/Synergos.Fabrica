@@ -1,6 +1,6 @@
 ---
 name: synergos-funcionalidad
-description: Cómo se arma o se extiende lo que el editor coloca en una página de Synergos, con el modelo de ADR 0134 (Aceptada). Primero se clasifica —FUNCIONALIDAD (nombrada por lo que hace, grande por dentro, un tag hacia el CMS, recibe sólo cableado) o PIEZA (colocable suelta que monta su gemela del design system)—; después, qué le llega a cada una y por qué canal (diccionario con t(), configuración de negocio que el editor no toca, pocas decisiones del editor como selector, identidad por el runtime) y nunca la configuración completa por un JSON del editor; qué se hace HOY y qué cambiaría: las ADR 0135 y 0136 están aceptadas y la 0137-0139 son propuestas; y las comprobaciones que cierran el trabajo: el dato que viaja (vista SynHost contra sanitizador, el defecto D1), la regla de los dos pisos, los textos y las regiones vivas. Activar antes de crear, reusar o cablear un elemento colocable, al escribir el S11 de un spec, cuando alguien propone darle al editor un campo JSON para configurar algo, o cuando se discute si una pieza del catálogo sin consumidor se retira.
+description: Cómo se arma o se extiende lo que el editor coloca en una página de Synergos, con el modelo de ADR 0134 (Aceptada). Primero se clasifica —FUNCIONALIDAD (nombrada por lo que hace, grande por dentro, un tag hacia el CMS, recibe sólo cableado) o PIEZA (colocable suelta que monta su gemela del design system)—; después, qué le llega a cada una y por qué canal (diccionario con t(), configuración de negocio que el editor no toca, pocas decisiones del editor como selector, identidad por el runtime) y nunca la configuración completa por un JSON del editor; qué se hace HOY y qué cambiaría: las ADR 0135, 0136 y 0137 están aceptadas y la 0138-0139 son propuestas; y las comprobaciones que cierran el trabajo: el dato que viaja (vista SynHost contra sanitizador, el defecto D1), la regla de los dos pisos, los textos y las regiones vivas. Activar antes de crear, reusar o cablear un elemento colocable, al escribir el S11 de un spec, cuando alguien propone darle al editor un campo JSON para configurar algo, o cuando se discute si una pieza del catálogo sin consumidor se retira.
 ---
 
 # SYNERGOS Funcionalidad — armar lo que el editor coloca
@@ -9,8 +9,8 @@ El arquitecto decidió el modelo al cerrar la auditoría de reutilización: **AD
 `CLAUDE.md` §0.C del CMS (principios 19-21). Es un **refinado, no una mudanza**: se conserva lo
 agnóstico —registry por CDN, import map y SRI, SynHost, Layout Composer, tokens `--syn-*` por
 siteRoot— y se ordena qué viaja por ahí. De NewShore se tomó **cómo funciona por dentro**, en cinco
-ADRs: la 0135 y la 0136 están **Aceptadas** (2026-09-30 y 2026-10-01) y la 0137 a la 0139 son
-**Propuestas**. Esta skill dice
+ADRs: la 0135, la 0136 y la 0137 están **Aceptadas** (2026-09-30, 2026-10-01 y 2026-10-02) y la 0138
+y la 0139 son **Propuestas**. Esta skill dice
 qué se hace HOY y qué cambiaría.
 
 > **Antes de seguir, el estado de hoy, del disco y no de esta skill:**
@@ -52,7 +52,7 @@ próxima persona pueda discrepar con algo delante.
 | **Contenido por instancia** (títulos, textos, imágenes) | poco (título, bajada) | sí | propiedades del ElementType (uSync) → el resolver las pone en el `record` del elemento (ADR 0135, Aceptada); en los que todavía no migraron, la vista las mete en `config` | igual |
 | **Decisiones del editor** (variante, mostrar/ocultar, página destino) | **pocas** | sí | **como selector, nunca texto libre**: `DTSelect*`/Dropdown.Flexible, TrueFalse, pickers (ADR 0021). Un editor que teclea un enum lo teclea mal | igual |
 | **Textos de la UI** (labels, errores, `aria-*`) | la funcionalidad **traduce** con `t(clave, respaldo)` | la pieza colocable declara su sección y traduce lo suyo; una **hoja** del DS recibe strings por input | `t` se importa de `@synergos/vitals-core`; la clave vive en uSync, en una **sección que el record del elemento declara** (`Diccionario = [...]`): la página publica la unión de las secciones de sus elementos, con fallback por clave a la cultura por defecto (ADR 0136, Aceptada). Sin record no hay sección: sale el respaldo y parece traducida (UI regla 44) | igual |
-| **Configuración de negocio** (moneda, comisión, endpoints, alcance) | sí — y el editor **no** la toca | **no**: una regla es una decisión del editor como selector, un ajuste es una constante | **no hay canal**. No se inventa uno: constante del componente con su default, y la deuda anotada en el ticket citando la ADR 0137. Nunca `configOverride`, nunca `environment.*.ts`, nunca JSON dentro de un string | `Synergos:Features:<X>` tipada, `IOptionsMonitor`, override por siteRoot **por fusión de claves**; llega sólo por el resolver (ADR 0137) |
+| **Configuración de negocio** (comisión, tasa, copago, endpoints) | sí — y el editor **no** la toca | **no**: una regla es una decisión del editor como selector, un ajuste es una constante | `Synergos:Features:<X>` tipada (`IOptionsMonitor`), override `Sitios:{Key del siteRoot}` **por fusión de claves**, y el sitio es el del **hostname**. Falla al arrancar con una clave que nadie lee o un valor fuera de rango (`IValidateOptions` sobre `ClavesDeConfiguracion`, `ValidateOnStart`); en caliente sigue el último valor válido. Una costura `INegocioDe<X>` con **dos lectores**: el resolver (lo que se muestra; campos `[CampoSynHost(Negocio)]`, sólo en funcionalidades) y el motor que la aplica o la cobra. Si la fórmula vive en dos lenguajes, vectores de oro en `docs/contracts/`. En el elemento, sin atributo suelto y leída en `ngOnInit`. La **moneda** no va: es un dato del precio. Nunca `configOverride`, nunca `environment.*.ts`, nunca JSON dentro de un string (ADR 0137, Aceptada; molde `eventos`, #194) | igual |
 | **Identidad, ruta, sesión** | sí | — | `window.synergos.member` (`getMember()` de `@synergos/vitals-core`); nunca un campo del editor con un paciente o un usuario por defecto | igual |
 | **La forma de lo que viaja** | | | en los elementos con resolver tipado (los que lista `docs/contracts/elementos-synhost.json`), un `record` C# atado al `name` del registry: el tipo TS se genera de él y D1 no compila (ADR 0135, Aceptada; `synergos-cms-author` §5B). En los que faltan, la vista arma un diccionario libre y el **sanitizador** decide qué conserva: **tienen que coincidir** (§5.1) | todos migrados (piezas: #180; funcionalidades, tras la ADR 0137) |
 
@@ -199,7 +199,7 @@ Hidrata, sin leaks, sin overflow a 375px, en todos los temas por siteRoot: `syne
 | ❌ No | ✅ En su lugar |
 |---|---|
 | Crear, reusar o cablear sin decir si es funcionalidad o pieza | Clasificar por lo que necesita recibir y escribirlo (§1) |
-| Darle al editor un JSON (o un `configOverride`) para configurar una funcionalidad | El canal que corresponde de §2; si no existe, constante + deuda anotada (ADR 0137) |
+| Darle al editor un JSON (o un `configOverride`) para configurar una funcionalidad | El canal que corresponde de §2: si es negocio, su sección `Synergos:Features:<X>` (ADR 0137) |
 | Un campo de texto libre para una decisión del editor | Un selector (ADR 0021) |
 | Un literal visible en una funcionalidad, o pasar el diccionario a una hoja | `t()` en la funcionalidad; strings a la hoja |
 | Una clave de diccionario en una sección que el record del elemento no declara | Declararla en su record (`Diccionario = [...]`); lo cruza `gate:diccionario` (ADR 0136) |
@@ -207,7 +207,7 @@ Hidrata, sin leaks, sin overflow a 375px, en todos los temas por siteRoot: `syne
 | Crear una pieza buscando por nombre | Buscar por concepto, incluidas las piezas sin consumidor (§4.1) |
 | Un elemento que reimplementa su gemela del DS | Montarla; si el elemento es mejor, que el DS absorba (§4.2) |
 | Proponer retirar una pieza porque nadie la usa | Usar, mejorar, fusionar o declarar (§6) |
-| Enseñar las ADR 0137-0139 como hechas | Decir «Propuesta» y qué se hace hoy (§2, §3) |
+| Enseñar las ADR 0138-0139 como hechas | Decir «Propuesta» y qué se hace hoy (§2, §3) |
 | Escribir una vista SynHost nueva con diccionario libre | `record` + resolver + vista de dos líneas (`synergos-cms-author` §5B; ADR 0135) |
 | Dar por bueno un colocable porque el SSR se ve bien | Vista contra sanitizador, ejecutado (§5.1) |
 | Un bus o un store en `window` para coordinar widgets | Coordinar por dentro; el caso, a su ticket (ADR 0138) |

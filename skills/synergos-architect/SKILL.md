@@ -27,7 +27,7 @@ Eres el copiloto del arquitecto cuando autora contenido editorial en el backoffi
 - **Backoffice instructions neutrales**: describe intención + metadatos ("crear nodo de tipo X bajo el padre Y, con propiedad Z = ..."), no path UI exacto. El UI cambia entre minor versions de Umbraco.
 - **Todo lo colocable es FUNCIONALIDAD o PIEZA** (ADR 0134, Aceptada; `CLAUDE.md` §0.C del CMS). Una funcionalidad se nombra por lo que hace y recibe **cableado**, no su configuración por el editor: nunca recomiendes un `configOverride` ni un campo de texto libre para configurarla. Una pieza recibe contenido y decisiones —**como selector**— y monta su gemela del design system. → `synergos-funcionalidad`
 - **No se propone retirar una pieza por no tener consumidor**, ni del catálogo Angular ni del Razor: es vocabulario de la fábrica. Un duplicado se fusiona; salir del CMS es decisión de producto (ADR 0134 §3).
-- **Las ADR 0135 y 0136 están Aceptadas (2026-09-30 y 2026-10-01); la 0137 a la 0139 son propuestas**: si una recomendación depende de una propuesta, se dice, y se da lo que se hace hoy. Un elemento con resolver tipado (los que lista `docs/contracts/elementos-synhost.json` del CMS) se describe por su `record`.
+- **Las ADR 0135, 0136 y 0137 están Aceptadas (2026-09-30, 2026-10-01 y 2026-10-02); la 0138 y la 0139 son propuestas**: si una recomendación depende de una propuesta, se dice, y se da lo que se hace hoy. Un elemento con resolver tipado (los que lista `docs/contracts/elementos-synhost.json` del CMS) se describe por su `record`.
 
 ## 1. Workflow al activarse
 
@@ -72,7 +72,7 @@ Dispara una recomendación con esta estructura:
   - Por qué: <1 frase justificando con la intención>
   - Capa: <Settings | Compositions | Blocks | Pages | Wiring>
   - Tipo de colocable: <funcionalidad | pieza> — <qué necesita recibir para funcionar>
-  - Si es funcionalidad, su cableado: <secciones de diccionario · configuración de negocio (hoy sin canal: ADR 0137, propuesta) · decisiones del editor como selector · identidad por runtime>
+  - Si es funcionalidad, su cableado: <secciones de diccionario · configuración de negocio (`Synergos:Features:<X>` por sitio: ADR 0137, Aceptada) · decisiones del editor como selector · identidad por runtime>
   - Si es pieza: <su gemela del design system, y si el elemento la monta>
 - Composiciones que aplica/hereda: <lista>
 - Pickers/DataTypes por campo:
@@ -340,9 +340,9 @@ arquitecto.
 ### Q: "¿Le agrego a `eventos` un campo para que el editor ponga la comisión?"
 
 A: **No.** `eventos` es una **funcionalidad**: recibe cableado, no su configuración por el editor
-(`CLAUDE.md` §0.C.20). La comisión es configuración de negocio: hoy **no hay canal** para ella —es
-una constante del componente— y el camino propuesto es `Synergos:Features:<X>` fuera del editor
-(ADR 0137, **Propuesta**). Tampoco por `configOverride`: se descarta en silencio si el JSON no
+(`CLAUDE.md` §0.C.20). La comisión es configuración de negocio: vive en `Synergos:Features:Eventos`, por
+sitio y fuera del editor, y la cobran los mismos motores que la muestran (ADR 0137, **Aceptada**;
+piloto #194). Tampoco por `configOverride`: se descarta en silencio si el JSON no
 parsea y pisa todo lo demás. Lo que sí le toca al editor son pocas decisiones, **como selector**.
 Detalle: `synergos-funcionalidad` §2.
 

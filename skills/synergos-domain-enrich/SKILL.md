@@ -32,7 +32,7 @@ campo nuevo — esta skill cubre sólo el primero:
 |---|---|---|
 | **datos del dominio** (artista, agenda, destacados, precio) | la API del vertical, desde el dominio/stub | **esta skill** |
 | **textos propios de la UI** (títulos de sección, labels, errores, `aria-*`) | diccionario: el elemento llama `t(clave, respaldo)` con la clave en una sección que su record declara —el bridge publica la unión de las secciones de la página—; sus hojas reciben strings (UI regla 44; ADR 0136, Aceptada) | cambio UI + clave en uSync (`synergos-usync-author` §7) |
-| **una regla de negocio** (comisión, moneda, alcance, endpoint) | **no hay canal todavía**: se queda como constante del componente y la deuda se anota citando la ADR 0137 (Propuesta). **Nunca** por `configOverride` ni por un campo nuevo del editor | ticket |
+| **una regla de negocio** (comisión, tasa, copago, endpoint) | la sección `Synergos:Features:<X>` de su funcionalidad, por sitio y validada al arrancar; llega por el resolver y la aplica el MISMO motor que la cobra (ADR 0137, Aceptada; molde: `eventos`, #194). Si la funcionalidad todavía no la tiene, se crea —no se deja como constante—. **Nunca** por `configOverride` ni por un campo nuevo del editor. La **moneda** no es una regla: es un dato del precio, y viaja con él | cambio CMS + UI (`synergos-funcionalidad` §2) |
 | **una decisión editorial** (qué variante, mostrar u ocultar) | un selector en el ElementType (ADR 0021), nunca texto libre | `synergos-cms-author` |
 | **quién es el usuario** | `window.synergos.member`, nunca un campo del editor con un valor por defecto | UI |
 
@@ -307,7 +307,7 @@ $r.artist; $r.highlights; $r.sessions
 | Editar el `*.model.ts` / template Angular para "que calce con el backend" | La UI es la fuente de verdad de claves. El backend se adapta a ella, no al revés. |
 | Empezar por el controller | Empieza por leer la UI (§1) → Interfaces → Application → Web. El flujo va UI-hacia-atrás. |
 | Contenido genérico / con anglicismos / redundante | Pásalo por el checklist del crítico (§3.1) antes de commitear. |
-| Meter una regla de negocio (comisión, moneda) en el stub o en un `configOverride` para que la pantalla «se vea completa» | No hay canal todavía: constante del componente + deuda anotada (ADR 0137, Propuesta) (§0.bis) |
+| Meter una regla de negocio (comisión, tasa) en el stub o en un `configOverride` para que la pantalla «se vea completa» | Su sección `Synergos:Features:<X>`, que leen la pantalla y el motor (ADR 0137, Aceptada) (§0.bis) |
 | Traducir nombres del dominio con claves de diccionario por código | Traducirlos en el servidor y mandarlos resueltos (ADR 0136 §5) |
 | Meter lógica de negocio en Application con `using Umbraco.Cms.*` | Application es lógica pura (ADR 0002). Contenido y records, nada de Umbraco/AspNetCore. |
 

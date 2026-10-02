@@ -538,7 +538,7 @@ public sealed class TagResolutor : IResolutorSynHost<TagProps>
   placeholder HTML comment. No hay error, sólo silencio en UI.
 - `configOverride`, en una pieza con resolver, **sólo pisa campos que el record declara**
   (`SolicitudSynHost.SoloLoDeclarado`). No es el canal de la configuración de una funcionalidad
-  (`synergos-funcionalidad` §2; ADR 0137, Propuesta).
+  (`synergos-funcionalidad` §2; ADR 0137, Aceptada).
 - El emitter agrega `culture` como envoltura; se decide aparte (cambio 6 de la ADR 0135).
 - `dotnet build` no compila las vistas: `node tools/compilan-las-vistas.mjs` en el CMS, con
   `DOTNET_CLI_UI_LANGUAGE=en`.

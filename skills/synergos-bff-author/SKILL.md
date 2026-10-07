@@ -171,13 +171,13 @@ opcionales acá:
 > proceso vivo lo destapó en un intento. Un test que pasa no prueba que el código
 > esté bien: prueba que coincide con lo que creías.
 
-Arrancar la pila localmente (el entorno pierde `PATH` con `setsid`):
+Arrancar la pila localmente, desde la raíz del repo del CMS (el backend corre en .NET 10 desde la ADR 0140 F2; el CMS sigue en .NET 8), y el entorno pierde `PATH` con `setsid`:
 
 ```bash
 export PATH="/tmp/claude-0/dotnet:$PATH" DOTNET_ROOT=/tmp/claude-0/dotnet
 export NO_PROXY=127.0.0.1,localhost; unset HTTPS_PROXY HTTP_PROXY
 setsid env PATH="$PATH" DOTNET_ROOT="$DOTNET_ROOT" \
-  ./Synergos.Api.X/bin/Debug/net8.0/Synergos.Api.X --urls http://127.0.0.1:5501 \
+  ./backend/capacidades/Synergos.Api.X/bin/Debug/net10.0/Synergos.Api.X --urls http://127.0.0.1:5501 \
   --X:Storage:Root=/tmp/x > /tmp/x.log 2>&1 < /dev/null & disown
 ```
 
